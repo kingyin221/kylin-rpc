@@ -13,9 +13,10 @@
   *  limitations under the License.
   */
 
- package zprpc.demo.nacos.api;
+ package zprpc.demo.nacos.producer;
 
  import com.lzp.zprpc.common.api.annotation.Gateway;
+ import com.lzp.zprpc.common.api.annotation.RpcService;
  import com.lzp.zprpc.common.api.constant.HttpMethod;
 
  /**
@@ -24,9 +25,13 @@
   * @author: Zeping Lu
   * @date: 2020/10/18 10:21
   */
+ @RpcService(ref = DemoServiceImpl.class)
  public interface DemoService {
 
      @Gateway(url = "/test", type = HttpMethod.GET)
      String sayHello(String name);
+
+     @Gateway(url = "/list", type = HttpMethod.GET)
+     String listDevice(Integer id);
 
  }

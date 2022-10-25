@@ -120,7 +120,7 @@ public class ServiceChannelPoolImp implements FixedShareableChannelPool {
                 }
             }
             try {
-                Thread.sleep(12000);
+                TimeUnit.SECONDS.sleep(12);
             } catch (InterruptedException e) {
                 LOGGER.error(e.getMessage(), e);
             }

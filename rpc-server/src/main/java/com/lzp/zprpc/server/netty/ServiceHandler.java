@@ -15,7 +15,9 @@
 
  package com.lzp.zprpc.server.netty;
 
+ import com.lzp.zprpc.common.api.ApiMeteDate;
  import com.lzp.zprpc.common.constant.Cons;
+ import com.lzp.zprpc.common.constant.RpcEnum;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.dtos.ResponseDTO;
  import com.lzp.zprpc.registry.api.RegistryClient;
@@ -32,9 +34,9 @@
  import com.lzp.zprpc.server.util.LogoUtil;
 
  import java.lang.reflect.Method;
- import java.util.Map;
- import java.util.Set;
+ import java.util.*;
  import java.util.concurrent.*;
+ import java.util.stream.Collectors;
 
  /**
   * Description:根据消息调用相应服务的handler
@@ -49,13 +51,52 @@
 
      private static ExecutorService serviceThreadPool;
 
+     private static Map<MethodMete, Object> services = new ConcurrentHashMap<>();
+
+     private static void startUpService(ApiMeteDate mete) {
+         MethodMete methodMete = MethodMete.builder().methodName(mete.getMethodName())
+                 .paramTypes(mete.getParamTypes()).service(mete.getService()).build();
+         if (!services.containsKey(methodMete)) {
+             Object service = null;
+             try {
+                 service = mete.getServiceType().newInstance();
+             } catch (InstantiationException | IllegalAccessException e) {
+                 LOGGER.error("服务实例话失败 service={}", mete.getService(), e);
+             }
+             services.put(methodMete, service);
+             LOGGER.info("启动服务 service={}", service);
+         }
+     }
+
+     private Map<String, List<ApiMeteDate>> apis(String service) {
+         HashMap<String, List<ApiMeteDate>> res = new HashMap<>();
+         idServiceMap.forEach((k,v)-> {
+             if (k == null || k.equals(service) && v instanceof List) {
+                 List<ApiMeteDate> as = ((List<?>) v).stream().filter(m -> m instanceof ApiMeteDate).map(m -> (ApiMeteDate) ((ApiMeteDate) m).clo()).collect(Collectors.toList());
+                 res.put(k, as);
+             }
+         });
+         return res;
+     }
+
+     private static MethodMete convApiMete(RequestDTO requestDTO) {
+         return MethodMete.builder().methodName(requestDTO.getMethodName()).service(requestDTO.getService()).paramTypes(requestDTO.getParamTypes()).build();
+     }
+
      @Override
      protected void channelRead0(ChannelHandlerContext channelHandlerContext, byte[] bytes) {
          serviceThreadPool.execute(() -> {
              RequestDTO requestDTO = RequestSearialUtil.deserialize(bytes);
+             if (Cons.REGISTRY_API.equals(requestDTO.getMethodName())) {
+                 LOGGER.info("获取方法表 service={}", requestDTO.getParams()[0]);
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(apis((String) requestDTO.getParams()[0]),requestDTO.getThreadId())));
+                 return;
+             }
              try {
-                 Object service = idServiceMap.get(requestDTO.getServiceId());
-                 Method method = service.getClass().getMethod(requestDTO.getMethodName(), requestDTO.getParamTypes());
+
+                 MethodMete methodMete = convApiMete(requestDTO);
+                 Object service = services.get(methodMete);
+                 Method method = service.getClass().getDeclaredMethod(methodMete.getMethodName(), methodMete.getParamTypes());
                  channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(method
                          .invoke(service, requestDTO.getParams()), requestDTO.getThreadId())));
              } catch (Exception e) {
@@ -97,8 +138,14 @@
                  default:
                      registryClient = new NacosClient();
              }
-             idServiceMap = registryClient.searchAndRegiInstance(PropertyUtil.getBasePack(), Server.getIp(), Server.getPort());
              LogoUtil.printLogo();
+             idServiceMap = registryClient.searchAndRegiInstance(PropertyUtil.getBasePack(), Server.getIp(), Server.getPort());
+             // 非IOC框架需要手动注入
+             idServiceMap.values().stream().filter(o->o instanceof List).collect(Collectors.toList()).forEach(s-> {
+                 if (s instanceof ApiMeteDate) {
+                     ServiceHandler.startUpService((ApiMeteDate) s);
+                 }
+             });
              LOGGER.info("publish service successfully");
              return registryClient;
          } catch (Exception e) {

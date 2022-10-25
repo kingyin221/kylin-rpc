@@ -16,20 +16,22 @@
 package zprpc.demo.nacos.producer;
 
 
-import com.lzp.zprpc.common.annotation.Service;
 import org.springframework.stereotype.Component;
-import zprpc.demo.nacos.api.DemoService;
 
  /**
   * @author zeping lu
   */
  @Component
- @Service(name = "demoService")
  public class DemoServiceImpl implements DemoService {
 
      @Override
      public String sayHello(String name) {
          return "hello " + name;
+     }
+
+     @Override
+     public String listDevice(Integer id) {
+         return "hello" + id;
      }
 
  }

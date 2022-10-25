@@ -18,16 +18,22 @@
  import com.alibaba.nacos.api.exception.NacosException;
  import com.alibaba.nacos.api.naming.NamingFactory;
  import com.alibaba.nacos.api.naming.NamingService;
+ import com.lzp.zprpc.common.api.ApiMeteDate;
+ import com.lzp.zprpc.common.api.annotation.Gateway;
+ import com.lzp.zprpc.common.api.annotation.RpcService;
  import com.lzp.zprpc.common.annotation.Service;
- import com.lzp.zprpc.common.util.SpringUtil;
+ import com.lzp.zprpc.common.api.constant.Constant;
+ import com.lzp.zprpc.common.api.constant.ServiceName;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import com.lzp.zprpc.registry.util.ClazzUtils;
+ import org.apache.commons.lang3.ObjectUtils;
+ import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
 
- import java.util.HashMap;
- import java.util.Map;
- import java.util.Set;
+ import java.lang.reflect.Method;
+ import java.util.*;
+ import java.util.stream.Collectors;
 
  /**
   * Description:实现了统一接口的nacos客户端
@@ -89,17 +95,56 @@
      }
 
 
-     private void regiInstanceIfNecessary(String ip, int port, Map<String, Object> idServiceMap, Class cls) throws InstantiationException, IllegalAccessException, NacosException {
-         if (cls.isAnnotationPresent(Service.class)) {
-             String id = getId((Service) cls.getAnnotation(Service.class));
-             Map<String, Object> nameInstanceMap = SpringUtil.getBeansOfType(cls);
-             if (nameInstanceMap.size() != 0) {
-                 idServiceMap.put(id, nameInstanceMap.entrySet().iterator().next().getValue());
-             } else {
-                 idServiceMap.put(id, cls.newInstance());
-             }
-             namingService.registerInstance(id, ip, port);
+     private void regiInstanceIfNecessary(String ip, int port, Map<String, Object> idServiceMap, Class<?> cls) throws InstantiationException, IllegalAccessException, NacosException {
+         if (cls.isAnnotationPresent(RpcService.class)) {
+             RpcService rpcService = cls.getDeclaredAnnotation(RpcService.class);
+             registerService(rpcService, cls, ip, port, idServiceMap);
+         } else if (Arrays.stream(cls.getDeclaredMethods()).anyMatch(method -> method.isAnnotationPresent(Gateway.class))) {
+             registerService(null, cls, ip, port, idServiceMap);
          }
+     }
+
+     private void registerService(RpcService rpcService, Class<?> type, String ip, int port, Map<String, Object> idServiceMap) throws NacosException {
+         // 服务解析
+         String id;
+         if (ObjectUtils.isEmpty(rpcService)) {
+             id = ServiceName.FULL.serviceName(ServiceName.HUMP_SIMPLE.getName(type), Constant.DEFAULT_MODULE);
+         } else {
+             String name = Optional.of(rpcService.name()).filter(StringUtils::isNotBlank)
+                     .orElse(rpcService.nameStrategy().getName(type));
+             String module = Optional.of(rpcService.module()).filter(StringUtils::isNotBlank)
+                     .orElse(Constant.DEFAULT_MODULE);
+             LOGGER.info("解析服务 module={} name={}", module, name);
+             id = ServiceName.FULL.serviceName(module, name);
+         }
+         LOGGER.info("id ={}", id);
+
+         namingService.registerInstance(id, ip, port);
+         // 方法解析
+         List<ApiMeteDate> mete = Arrays.stream(type.getDeclaredMethods()).filter(ObjectUtils::isNotEmpty)
+                 .filter(method -> method.isAnnotationPresent(Gateway.class)).map(this::analysis)
+                 .collect(Collectors.toList());
+         mete.forEach(m-> {
+             m.setServiceType(type);
+             m.setService(id);
+         });
+         idServiceMap.put(id, mete);
+     }
+     
+     private ApiMeteDate analysis(Method method) {
+         Gateway gateway = method.getDeclaredAnnotation(Gateway.class);
+         ApiMeteDate mete = ApiMeteDate.builder()
+                 .url(gateway.url())
+                 .type(gateway.type())
+                 .methodName(method.getName())
+                 .paramTypes(method.getParameterTypes())
+                 .build();
+         LOGGER.info("方法解析 mete={}", mete);
+         return mete;
+     }
+
+     public static void main(String[] args) {
+         System.out.println(NacosClient.class.getSimpleName());
      }
 
      private String getId(Service service) {

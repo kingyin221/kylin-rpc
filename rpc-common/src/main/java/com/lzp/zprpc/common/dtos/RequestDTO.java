@@ -15,7 +15,13 @@
 
 package com.lzp.zprpc.common.dtos;
 
-import java.lang.reflect.Method;
+import com.lzp.zprpc.common.constant.RpcEnum;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.StringReader;
 import java.util.Arrays;
 
 /**
@@ -24,6 +30,10 @@ import java.util.Arrays;
  * @author: Lu ZePing
  * @date: 2020/9/29 14:16
  */
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class RequestDTO {
     /**
      * 发起rpc请求的线程的线程id。
@@ -40,79 +50,15 @@ public class RequestDTO {
     /**
      * 方法参数类型
      */
-    private Class[] paramTypes;
+    private Class<?>[] paramTypes;
 
     /**
      * 调用参数
      */
     private Object[] params;
     /**
-     * 调用的服务id
+     * 调用的服务
      */
-    private String serviceId;
+    private String service;
 
-    public RequestDTO() {
-    }
-
-    public RequestDTO(long threadId, String serviceId, String methodName, Class[] paramTypes, Object... prams) {
-        this.threadId = threadId;
-        this.serviceId = serviceId;
-        this.methodName = methodName;
-        this.paramTypes = paramTypes;
-        this.params = prams;
-    }
-
-    public String getMethodName() {
-        return methodName;
-    }
-
-    public void setMethodName(String methodName) {
-        this.methodName = methodName;
-    }
-
-    public Class[] getParamTypes() {
-        return paramTypes;
-    }
-
-    public void setParamTypes(Class[] pramTypes) {
-        this.paramTypes = pramTypes;
-    }
-
-    public Object[] getParams() {
-        return params;
-    }
-
-    public long getThreadId() {
-        return threadId;
-    }
-
-    public void setThreadId(long threadId) {
-        this.threadId = threadId;
-    }
-
-    public void setMethod(String methodName) {
-        this.methodName = methodName;
-    }
-
-    public void setPrams(Object[] prams) {
-        this.params = prams;
-    }
-
-    public String getServiceId() {
-        return serviceId;
-    }
-
-    public void setServiceId(String serviceId) {
-        this.serviceId = serviceId;
-    }
-
-    @Override
-    public String toString() {
-        return "RequestDTO{" +
-                "threadId=" + threadId +
-                ", method=" + methodName +
-                ", params=" + Arrays.toString(params) +
-                ", serviceId='" + serviceId + '\'' +
-                '}';
-    }
 }

@@ -102,9 +102,9 @@ package com.lzp.zprpc.client.redis;
          }
      }
 
-     public static Object getServiceBean(String serviceName, Class interfaceCls) {
-         return getServiceBean(serviceName, "default", interfaceCls);
-     }
+//     public static Object getServiceBean(String serviceName, Class interfaceCls) {
+//         return getServiceBean(serviceName, "default", interfaceCls);
+//     }
 
      /**
       * Description:获取远程服务代理对象，通过这个对象可以调用远程服务的方法，就和调用本地方法一样
@@ -114,37 +114,37 @@ package com.lzp.zprpc.client.redis;
       * @param group        需要远程调用的组
       * @param interfaceCls 本地和远程服务实现的接口
       */
-     public static Object getServiceBean(String serviceName, String group, Class interfaceCls) {
-         String serviceId = serviceName + "." + group;
-         BeanAndAllHostAndPort beanAndAllHostAndPort;
-         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
-             synchronized (ServiceFactory.class) {
-                 if (serviceIdInstanceMap.get(serviceId) == null) {
-                     List<String> hostAndPorts = new CopyOnWriteArrayList<>(redisClient.getAndTransformToList(serviceId));
-                     Object bean = getServiceBean0(serviceId, interfaceCls);
-                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(bean, hostAndPorts, null));
-                     return bean;
-                 } else {
-                     return serviceIdInstanceMap.get(serviceId).bean;
-                 }
-             }
-         } else {
-             if (beanAndAllHostAndPort.bean == null) {
-                 synchronized (ServiceFactory.class) {
-                     if (serviceIdInstanceMap.get(serviceId).bean == null) {
-                         beanAndAllHostAndPort.bean = getServiceBean0(serviceId, interfaceCls);
-                     }
-                     return beanAndAllHostAndPort.bean;
-                 }
-             } else {
-                 return beanAndAllHostAndPort.bean;
-             }
-         }
-     }
-
-     public static Object getServiceBean(String serviceName, Class interfaceCls, int timeout) {
-         return getServiceBean(serviceName, "default", interfaceCls, timeout);
-     }
+//     public static Object getServiceBean(String serviceName, String group, Class interfaceCls) {
+//         String serviceId = serviceName + "." + group;
+//         BeanAndAllHostAndPort beanAndAllHostAndPort;
+//         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
+//             synchronized (ServiceFactory.class) {
+//                 if (serviceIdInstanceMap.get(serviceId) == null) {
+//                     List<String> hostAndPorts = new CopyOnWriteArrayList<>(redisClient.getAndTransformToList(serviceId));
+//                     Object bean = getServiceBean0(serviceId, interfaceCls);
+//                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(bean, hostAndPorts, null));
+//                     return bean;
+//                 } else {
+//                     return serviceIdInstanceMap.get(serviceId).bean;
+//                 }
+//             }
+//         } else {
+//             if (beanAndAllHostAndPort.bean == null) {
+//                 synchronized (ServiceFactory.class) {
+//                     if (serviceIdInstanceMap.get(serviceId).bean == null) {
+//                         beanAndAllHostAndPort.bean = getServiceBean0(serviceId, interfaceCls);
+//                     }
+//                     return beanAndAllHostAndPort.bean;
+//                 }
+//             } else {
+//                 return beanAndAllHostAndPort.bean;
+//             }
+//         }
+//     }
+//
+//     public static Object getServiceBean(String serviceName, Class interfaceCls, int timeout) {
+//         return getServiceBean(serviceName, "default", interfaceCls, timeout);
+//     }
 
      /**
       * Description:获取远程服务代理对象，通过这个对象可以调用远程服务的方法，就和调用本地方法一样
@@ -155,113 +155,113 @@ package com.lzp.zprpc.client.redis;
       * @param interfaceCls 本地和远程服务实现的接口
       * @param timeout      rpc调用的超时时间,单位是毫秒,超过这个时间没返回则抛 {@link RpcTimeoutException}
       */
-     public static Object getServiceBean(String serviceName, String group, Class interfaceCls, int timeout) {
-         checkTimeOut(timeout);
-         String serviceId = serviceName + "." + group;
-         BeanAndAllHostAndPort beanAndAllHostAndPort;
-         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
-             synchronized (ServiceFactory.class) {
-                 if (serviceIdInstanceMap.get(serviceId) == null) {
-                     List<String> hostAndPorts = new CopyOnWriteArrayList<>(redisClient.getAndTransformToList(serviceId));
-                     Object beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
-                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(null, hostAndPorts, beanWithTimeOut));
-                     return beanWithTimeOut;
-                 } else {
-                     return serviceIdInstanceMap.get(serviceId).beanWithTimeOut;
-                 }
-             }
-         } else {
-             if (beanAndAllHostAndPort.beanWithTimeOut == null) {
-                 synchronized (ServiceFactory.class) {
-                     if (serviceIdInstanceMap.get(serviceId).beanWithTimeOut == null) {
-                         beanAndAllHostAndPort.beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
-                     }
-                     return beanAndAllHostAndPort.beanWithTimeOut;
-                 }
-             } else {
-                 return beanAndAllHostAndPort.beanWithTimeOut;
-             }
-         }
-     }
+//     public static Object getServiceBean(String serviceName, String group, Class interfaceCls, int timeout) {
+//         checkTimeOut(timeout);
+//         String serviceId = serviceName + "." + group;
+//         BeanAndAllHostAndPort beanAndAllHostAndPort;
+//         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
+//             synchronized (ServiceFactory.class) {
+//                 if (serviceIdInstanceMap.get(serviceId) == null) {
+//                     List<String> hostAndPorts = new CopyOnWriteArrayList<>(redisClient.getAndTransformToList(serviceId));
+//                     Object beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
+//                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(null, hostAndPorts, beanWithTimeOut));
+//                     return beanWithTimeOut;
+//                 } else {
+//                     return serviceIdInstanceMap.get(serviceId).beanWithTimeOut;
+//                 }
+//             }
+//         } else {
+//             if (beanAndAllHostAndPort.beanWithTimeOut == null) {
+//                 synchronized (ServiceFactory.class) {
+//                     if (serviceIdInstanceMap.get(serviceId).beanWithTimeOut == null) {
+//                         beanAndAllHostAndPort.beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
+//                     }
+//                     return beanAndAllHostAndPort.beanWithTimeOut;
+//                 }
+//             } else {
+//                 return beanAndAllHostAndPort.beanWithTimeOut;
+//             }
+//         }
+//     }
+//
+//      /* public static Object getAsyServiceBean(String serviceId, Class interfaceCls, int timeout) {
+//        return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{interfaceCls}, new InvocationHandler() {
+//            @Override
+//            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+//
+//                return null;
+//            }
+//        });
+//    }*/
+//
+//
+//     /**
+//      * Description:校验参数
+//      **/
+//     private static void checkTimeOut(int timeout) {
+//         if (timeout <= 0) {
+//             throw new IllegalArgumentException("timeout need to be greater than 0");
+//         }
+//     }
 
-      /* public static Object getAsyServiceBean(String serviceId, Class interfaceCls, int timeout) {
-        return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{interfaceCls}, new InvocationHandler() {
-            @Override
-            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 
-                return null;
-            }
-        });
-    }*/
+//     private static Object getServiceBean0(String serviceId, Class interfaceCls) {
+//         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
+//                 new Class[]{interfaceCls}, (proxy, method, args) -> {
+//                     Object result;
+//                     if ((result = callAndGetResult(method, serviceId, Long.MAX_VALUE, args)) instanceof String &&
+//                             ((String) result).startsWith(Cons.EXCEPTION)) {
+//                         throw new RemoteException(((String) result).substring(Cons.THREE));
+//                     }
+//                     return result;
+//                 });
+//     }
 
+//     private static Object getServiceBean0(String serviceId, Class interfaceCls, int timeout) {
+//         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
+//                 new Class[]{interfaceCls}, (proxy, method, args) -> {
+//                     Object result = callAndGetResult(method, serviceId, System.currentTimeMillis() + timeout, args);
+//                     if (result instanceof String && ((String) result).startsWith(Cons.EXCEPTION)) {
+//                         String message;
+//                         if (Cons.TIMEOUT.equals(message = ((String) result).substring(Cons.THREE))) {
+//                             throw new RpcTimeoutException("rpc timeout");
+//                         } else {
+//                             throw new RemoteException(message);
+//                         }
+//                     }
+//                     return result;
+//                 });
+//     }
 
-     /**
-      * Description:校验参数
-      **/
-     private static void checkTimeOut(int timeout) {
-         if (timeout <= 0) {
-             throw new IllegalArgumentException("timeout need to be greater than 0");
-         }
-     }
-
-
-     private static Object getServiceBean0(String serviceId, Class interfaceCls) {
-         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
-                 new Class[]{interfaceCls}, (proxy, method, args) -> {
-                     Object result;
-                     if ((result = callAndGetResult(method, serviceId, Long.MAX_VALUE, args)) instanceof String &&
-                             ((String) result).startsWith(Cons.EXCEPTION)) {
-                         throw new RemoteException(((String) result).substring(Cons.THREE));
-                     }
-                     return result;
-                 });
-     }
-
-     private static Object getServiceBean0(String serviceId, Class interfaceCls, int timeout) {
-         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
-                 new Class[]{interfaceCls}, (proxy, method, args) -> {
-                     Object result = callAndGetResult(method, serviceId, System.currentTimeMillis() + timeout, args);
-                     if (result instanceof String && ((String) result).startsWith(Cons.EXCEPTION)) {
-                         String message;
-                         if (Cons.TIMEOUT.equals(message = ((String) result).substring(Cons.THREE))) {
-                             throw new RpcTimeoutException("rpc timeout");
-                         } else {
-                             throw new RemoteException(message);
-                         }
-                     }
-                     return result;
-                 });
-     }
-
-     private static Object callAndGetResult(Method method, String serviceId, long deadline, Object... args) throws Exception {
-         String ipAndport = "";
-         List<String> hostAndPorts = serviceIdInstanceMap.get(serviceId).hostAndPorts;
-         try {
-             //根据serviceid找到所有提供这个服务的ip+port
-             Thread thisThread = Thread.currentThread();
-             ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(deadline, thisThread);
-             ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
-             channelPool.getChannel(ipAndport = hostAndPorts.get(ThreadLocalRandom.current().nextInt(hostAndPorts.size())))
-                     .writeAndFlush(RequestSearialUtil.serialize(new RequestDTO(thisThread.getId(), serviceId, method.getName(), method.getParameterTypes(), args)));
-             Object result;
-             //用while，防止虚假唤醒
-             while ((result = threadResultAndTime.getResult()) == null) {
-                 LockSupport.park();
-             }
-             return result;
-         } catch (ConnectException e) {
-             hostAndPorts.remove(ipAndport);
-             redisClient.sremove(serviceId, ipAndport);
-             if (System.currentTimeMillis() > deadline) {
-                 ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return Cons.EXCEPTION + Cons.TIMEOUT;
-             } else {
-                 return callAndGetResult(method, serviceId, deadline, args);
-             }
-         } catch (IllegalArgumentException e) {
-             ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-             throw new CallException("no service available");
-         }
-     }
+//     private static Object callAndGetResult(Method method, String serviceId, long deadline, Object... args) throws Exception {
+//         String ipAndport = "";
+//         List<String> hostAndPorts = serviceIdInstanceMap.get(serviceId).hostAndPorts;
+//         try {
+//             //根据serviceid找到所有提供这个服务的ip+port
+//             Thread thisThread = Thread.currentThread();
+//             ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(deadline, thisThread);
+//             ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
+//             channelPool.getChannel(ipAndport = hostAndPorts.get(ThreadLocalRandom.current().nextInt(hostAndPorts.size())))
+//                     .writeAndFlush(RequestSearialUtil.serialize(new RequestDTO(thisThread.getId(), serviceId, method.getName(), method.getParameterTypes(), args)));
+//             Object result;
+//             //用while，防止虚假唤醒
+//             while ((result = threadResultAndTime.getResult()) == null) {
+//                 LockSupport.park();
+//             }
+//             return result;
+//         } catch (ConnectException e) {
+//             hostAndPorts.remove(ipAndport);
+//             redisClient.sremove(serviceId, ipAndport);
+//             if (System.currentTimeMillis() > deadline) {
+//                 ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
+//                 return Cons.EXCEPTION + Cons.TIMEOUT;
+//             } else {
+//                 return callAndGetResult(method, serviceId, deadline, args);
+//             }
+//         } catch (IllegalArgumentException e) {
+//             ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
+//             throw new CallException("no service available");
+//         }
+//     }
 
  }

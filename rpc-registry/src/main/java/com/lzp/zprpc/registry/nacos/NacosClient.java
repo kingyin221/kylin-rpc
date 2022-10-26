@@ -143,10 +143,6 @@
          return mete;
      }
 
-     public static void main(String[] args) {
-         System.out.println(NacosClient.class.getSimpleName());
-     }
-
      private String getId(Service service) {
          String name;
          String group;

@@ -47,19 +47,20 @@ public class RpcRequest {
         return type == 1;
     }
 
-    public String key() {
+    public Object key() {
         if (isApi()) {
-            return this.httpMethod.name() + Cons.COLON + this.var1;
+            return new Api(this.var1, this.httpMethod);
         } else  {
-            return this.var1 + Cons.COLON + var2 + Cons.COLON + (this.paramsType == null ? Lists.newArrayList().toString() : Arrays.toString(this.paramsType));
+            return new Service(var1, var2, paramsType);
         }
     }
 
-    public void decoderService(String service) {
-        String[] split = service.split(String.valueOf(Cons.COLON));
-        this.var1 = split[0];
-        this.var2 = split[1];
-        // todo 参数类型转换
+    public void conv(Service service) {
+        this.var1 = service.getService();
+        this.var2 = service.getMethodName();
+        this.paramsType = service.getParamTypes();
     }
+
+
 
 }

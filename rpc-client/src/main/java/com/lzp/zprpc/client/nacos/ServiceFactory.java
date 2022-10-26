@@ -36,6 +36,7 @@
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import org.apache.commons.lang3.ObjectUtils;
+ import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
 
@@ -54,9 +55,9 @@
      private static final Logger LOGGER = LoggerFactory.getLogger(ServiceFactory.class);
 
      private static Map<String, BeanAndAllHostAndPort> serviceIdInstanceMap = new ConcurrentHashMap<>();
-     private static Map<String, List<ServiceMete>> services = new ConcurrentHashMap<>();
-     private static Map<String, String> apiServiceMap = new ConcurrentHashMap<>();
-     private static Map<String, String> serviceApiMap = new ConcurrentHashMap<>();
+     private static Map<Service, List<ServiceMete>> services = new ConcurrentHashMap<>();
+     private static Map<Api, Service> apiServiceMap = new ConcurrentHashMap<>();
+     private static Map<Service, Api> serviceApiMap = new ConcurrentHashMap<>();
      private static NamingService naming;
      private static FixedShareableChannelPool channelPool;
      private static boolean start = false;
@@ -246,19 +247,19 @@
      }
 
      private static void removeServiceMete(ServiceMete mete) {
-         Iterator<String> iterator = services.keySet().iterator();
-         String api;
+         Iterator<Service> iterator = services.keySet().iterator();
+         Service service;
          List<ServiceMete> metes;
          while (iterator.hasNext()) {
-             api = iterator.next();
-             metes = services.get(api);
+             service = iterator.next();
+             metes = services.get(service);
              if (ObjectUtils.isNotEmpty(mete)) {
                  if (metes.stream().map(ServiceMete::getId).anyMatch(mete.getId()::equals)) {
                      metes.remove(mete);
                      if (metes.isEmpty()) {
-                         services.remove(api);
-                         String service = serviceApiMap.remove(api);
-                         apiServiceMap.remove(service);
+                         services.remove(service);
+                         Api api = serviceApiMap.remove(service);
+                         apiServiceMap.remove(api);
                      }
                  }
              }
@@ -284,12 +285,14 @@
          LOGGER.info("注册表 reg={}", services);
      }
 
-     private static String encoderApiMete(ApiMeteDate apiMeteDate) {
-         String api = apiMeteDate.getType().name() + Cons.COLON + apiMeteDate.getUrl();
-         String service = apiMeteDate.getService() + Cons.COLON + apiMeteDate.getMethodName() + (apiMeteDate.getServiceType() == null ? Lists.newArrayList().toString(): Arrays.toString(apiMeteDate.getParamTypes()));
-         apiServiceMap.put(service, api);
-         serviceApiMap.put(api, service);
-         return api;
+     private static Service encoderApiMete(ApiMeteDate apiMeteDate) {
+         Service service = new Service(apiMeteDate.getService(), apiMeteDate.getMethodName(), apiMeteDate.getParamTypes());
+         if (StringUtils.isNotBlank(apiMeteDate.getUrl())) {
+             Api api = new Api(apiMeteDate.getUrl(), apiMeteDate.getType());
+             apiServiceMap.put(api, service);
+             serviceApiMap.put(service, api);
+         }
+         return service;
      }
 
 //
@@ -392,14 +395,13 @@
          try {
              //根据serviceid找到所有提供这个服务的ip+port
              Thread thisThread = Thread.currentThread();
-             String key = rpcRequest.key();
+             Object key = rpcRequest.key();
              List<ServiceMete> metes;
              if (rpcRequest.isApi()) {
-                 String service = apiServiceMap.get(key);
-                 metes= services.get(key);
-                 rpcRequest.decoderService(service);
+                 Service service = apiServiceMap.get((Api) key);
+                 metes= services.get(service);
              } else {
-                 metes = services.get(serviceApiMap.get(key));
+                 metes = services.get(((Service) key));
              }
              RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType())
                      .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();
@@ -433,10 +435,10 @@
          try {
              //根据serviceid找到所有提供这个服务的ip+port
              Thread thisThread = Thread.currentThread();
-             String key = rpcRequest.key();
+             Object key = rpcRequest.key();
              if (rpcRequest.isApi()) {
-                 String service = apiServiceMap.get(key);
-                 rpcRequest.decoderService(service);
+                 Service service = apiServiceMap.get((Api) key);
+                 rpcRequest.conv(service);
              }
              RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType())
                      .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();

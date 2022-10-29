@@ -17,24 +17,31 @@
 
  import com.lzp.zprpc.common.api.ApiMeteDate;
  import com.lzp.zprpc.common.constant.Cons;
- import com.lzp.zprpc.common.constant.RpcEnum;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.dtos.ResponseDTO;
- import com.lzp.zprpc.registry.api.RegistryClient;
- import com.lzp.zprpc.registry.nacos.NacosClient;
+ import com.lzp.zprpc.common.exception.CallException;
+ import com.lzp.zprpc.common.filter.CalculateServiceMeteFilter;
+ import com.lzp.zprpc.common.filter.LoggerFilter;
+ import com.lzp.zprpc.common.filter.RpcFilter;
  import com.lzp.zprpc.common.util.PropertyUtil;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ResponseSearialUtil;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
+ import com.lzp.zprpc.registry.api.RegistryClient;
+ import com.lzp.zprpc.registry.nacos.NacosClient;
  import com.lzp.zprpc.registry.redis.RedisClient;
+ import com.lzp.zprpc.server.util.LogoUtil;
  import io.netty.channel.ChannelHandlerContext;
  import io.netty.channel.SimpleChannelInboundHandler;
+ import org.apache.commons.lang3.ObjectUtils;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
- import com.lzp.zprpc.server.util.LogoUtil;
 
  import java.lang.reflect.Method;
- import java.util.*;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
  import java.util.concurrent.*;
  import java.util.stream.Collectors;
 
@@ -51,26 +58,52 @@
 
      private static ExecutorService serviceThreadPool;
 
-     private static Map<MethodMete, Object> services = new ConcurrentHashMap<>();
+     private static Map<Class<?>, Object> services = new ConcurrentHashMap<>();
+
+     private static Map<MethodMete, Class<?>> serviceClassMap = new ConcurrentHashMap<>();
+
+     private static RpcFilter filters;
+
+     private static RpcFilter preFilter;
+
+     public static void filter(RpcFilter filter) {
+         if (filters == null) {
+             filters = filter;
+             preFilter = filter;
+         } else {
+             preFilter.next(filter);
+             RpcFilter cur = filter;
+             while (cur != null && cur.next() != null) cur = filter.next();
+             preFilter = cur;
+         }
+     }
+
+     static {
+         filter(new CalculateServiceMeteFilter());
+         filter(new LoggerFilter());
+     }
 
      private static void startUpService(ApiMeteDate mete) {
          MethodMete methodMete = MethodMete.builder().methodName(mete.getMethodName())
                  .paramTypes(mete.getParamTypes()).service(mete.getService()).build();
-         if (!services.containsKey(methodMete)) {
-             Object service = null;
-             try {
-                 service = mete.getServiceType().newInstance();
-             } catch (InstantiationException | IllegalAccessException e) {
-                 LOGGER.error("服务实例话失败 service={}", mete.getService(), e);
+         if (!serviceClassMap.containsKey(methodMete)) {
+             serviceClassMap.put(methodMete, mete.getServiceType());
+             if (!services.containsKey(mete.getServiceType())) {
+                 Object service = null;
+                 try {
+                     service = mete.getServiceType().newInstance();
+                 } catch (InstantiationException | IllegalAccessException e) {
+                     LOGGER.error("服务实例华失败 service={}", mete.getService(), e);
+                 }
+                 services.put(mete.getServiceType(), service);
+                 LOGGER.info("服务启动 service={}", service);
              }
-             services.put(methodMete, service);
-             LOGGER.info("启动服务 service={}", service);
          }
      }
 
      private Map<String, List<ApiMeteDate>> apis(String service) {
          HashMap<String, List<ApiMeteDate>> res = new HashMap<>();
-         idServiceMap.forEach((k,v)-> {
+         idServiceMap.forEach((k, v) -> {
              if (k == null || k.equals(service) && v instanceof List) {
                  List<ApiMeteDate> as = ((List<?>) v).stream().filter(m -> m instanceof ApiMeteDate).map(m -> (ApiMeteDate) ((ApiMeteDate) m).clo()).collect(Collectors.toList());
                  res.put(k, as);
@@ -89,16 +122,20 @@
              RequestDTO requestDTO = RequestSearialUtil.deserialize(bytes);
              if (Cons.REGISTRY_API.equals(requestDTO.getMethodName())) {
                  LOGGER.info("获取方法表 service={}", requestDTO.getParams()[0]);
-                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(apis((String) requestDTO.getParams()[0]),requestDTO.getThreadId())));
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(apis((String) requestDTO.getParams()[0]), requestDTO.getThreadId())));
                  return;
              }
+             Object res;
              try {
-
                  MethodMete methodMete = convApiMete(requestDTO);
-                 Object service = services.get(methodMete);
+                 Class<?> key = serviceClassMap.get(methodMete);
+                 if (ObjectUtils.isEmpty(key)) throw new CallException("not found method=" + methodMete);
+                 Object service = services.get(key);
                  Method method = service.getClass().getDeclaredMethod(methodMete.getMethodName(), methodMete.getParamTypes());
-                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(method
-                         .invoke(service, requestDTO.getParams()), requestDTO.getThreadId())));
+                 filters.chainBefore(requestDTO);
+                 res = method.invoke(service, requestDTO.getParams());
+                 filters.chainAfter(requestDTO, res);
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(res, requestDTO.getThreadId())));
              } catch (Exception e) {
                  channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(Cons.EXCEPTION + getDetailMsgOfException(e), requestDTO.getThreadId())));
              }
@@ -141,7 +178,7 @@
              LogoUtil.printLogo();
              idServiceMap = registryClient.searchAndRegiInstance(PropertyUtil.getBasePack(), Server.getIp(), Server.getPort());
              // 非IOC框架需要手动注入
-             idServiceMap.values().stream().filter(o->o instanceof List).collect(Collectors.toList()).forEach(s-> {
+             idServiceMap.values().stream().filter(o -> o instanceof List).flatMap(l -> ((List<?>) l).stream()).forEach(s -> {
                  if (s instanceof ApiMeteDate) {
                      ServiceHandler.startUpService((ApiMeteDate) s);
                  }

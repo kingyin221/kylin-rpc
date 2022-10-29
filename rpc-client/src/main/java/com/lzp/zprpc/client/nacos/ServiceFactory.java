@@ -26,11 +26,16 @@
  import com.lzp.zprpc.client.connectionpool.FixedShareableChannelPool;
  import com.lzp.zprpc.client.connectionpool.ServiceChannelPoolImp;
  import com.lzp.zprpc.client.connectionpool.SingleChannelPool;
+ import com.lzp.zprpc.client.netty.ResultHandler;
  import com.lzp.zprpc.common.api.ApiMeteDate;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.exception.CallException;
- import com.lzp.zprpc.client.netty.ResultHandler;
+ import com.lzp.zprpc.common.exception.RemoteException;
+ import com.lzp.zprpc.common.exception.RpcTimeoutException;
+ import com.lzp.zprpc.common.filter.CalculateClientMeteFilter;
+ import com.lzp.zprpc.common.filter.LoggerFilter;
+ import com.lzp.zprpc.common.filter.RpcFilter;
  import com.lzp.zprpc.common.util.PropertyUtil;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
@@ -40,9 +45,11 @@
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
 
+ import java.lang.reflect.Proxy;
  import java.net.ConnectException;
  import java.util.*;
  import java.util.concurrent.*;
+ import java.util.concurrent.atomic.AtomicReference;
  import java.util.concurrent.locks.LockSupport;
 
  /**
@@ -54,22 +61,37 @@
  public class ServiceFactory {
      private static final Logger LOGGER = LoggerFactory.getLogger(ServiceFactory.class);
 
-     private static Map<String, BeanAndAllHostAndPort> serviceIdInstanceMap = new ConcurrentHashMap<>();
-     private static Map<Service, List<ServiceMete>> services = new ConcurrentHashMap<>();
-     private static Map<Api, Service> apiServiceMap = new ConcurrentHashMap<>();
-     private static Map<Service, Api> serviceApiMap = new ConcurrentHashMap<>();
+     private static final Map<Service, List<ServiceMete>> services = new ConcurrentHashMap<>();
+     private static final Map<Api, Service> apiServiceMap = new ConcurrentHashMap<>();
+     private static final Map<Service, Api> serviceApiMap = new ConcurrentHashMap<>();
      private static NamingService naming;
      private static FixedShareableChannelPool channelPool;
-     private static boolean start = false;
-     private static ExecutorService registerThreadPool;
+     private static final AtomicReference<ServiceState> state = new AtomicReference<>(ServiceState.STOP);
+     private static final ExecutorService registerThreadPool;
+
+     private static RpcFilter filters;
+
+     private static RpcFilter preFilter;
+
+     public static void filter(RpcFilter filter) {
+         if (filters == null) {
+             filters = filter;
+             preFilter = filter;
+         } else {
+             preFilter.next(filter);
+             RpcFilter cur = filter;
+             while (cur != null && cur.next() != null) cur = filter.next();
+             preFilter = cur;
+         }
+     }
 
      static {
 
          registerThreadPool = new ThreadPoolExecutor(3, 3, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1000),
                  new ThreadFactoryImpl("rpc register"), (r, executor) -> r.run());
-
+         filter(new CalculateClientMeteFilter());
+         filter(new LoggerFilter());
          try {
-             String nacosIpFromEnv;
              //如果需要查配置文件,必须打在同一classpath下(如果是OSGI环境,可以通过插件配置)
              naming = NamingFactory.createNamingService(RegistryClient.HOST);
 
@@ -84,130 +106,30 @@
          }
      }
 
-
-     private static final class BeanAndAllHostAndPort {
-         private volatile Object bean;
-         private volatile List<String> hostAndPorts;
-         private volatile Object beanWithTimeOut;
-
-         public BeanAndAllHostAndPort(Object bean, List<String> hostAndPorts, Object beanWithTimeOut) {
-             this.bean = bean;
-             this.hostAndPorts = hostAndPorts;
-             this.beanWithTimeOut = beanWithTimeOut;
+     public static Object getService(String module, String name, Class<?> type, long timeout) {
+         // 构建id
+         String id = buildId(module, name);
+         if (containsServiceId(id)) {
+             registerById(id);
          }
+         // 默认超时时间
+         if (timeout == -1) {
+             timeout = 10 * 60 * 1000;
+         }
+         return proxy(id, type, timeout);
      }
 
+     private static String buildId(String module, String name) {
+         return "[" + module + "]" + name;
+     }
 
-//     public static Object getServiceBean(String serviceName, Class interfaceCls) throws NacosException {
-//         return getServiceBean(serviceName, "default", interfaceCls);
-//     }
-
-//     /**
-//      * Description:获取远程服务代理对象，通过这个对象可以调用远程服务的方法，就和调用本地方法一样
-//      * 代理对象是单例的
-//      *
-//      * @param serviceName  需要远程调用的服务名
-//      * @param group        需要远程调用的组
-//      * @param interfaceCls 本地和远程服务实现的接口
-//      */
-//     public static Object getServiceBean(String serviceName, String group, Class interfaceCls) throws NacosException {
-//         String serviceId = serviceName + "." + group;
-//         BeanAndAllHostAndPort beanAndAllHostAndPort;
-//         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
-//             synchronized (ServiceFactory.class) {
-//                 if (serviceIdInstanceMap.get(serviceId) == null) {
-//                     List<String> hostAndPorts = new ArrayList<>();
-//                     for (Instance instance : naming.selectInstances(serviceId, true)) {
-//                         hostAndPorts.add(instance.getIp() + Cons.COLON + instance.getPort());
-//                     }
-//                     Object bean = getServiceBean0(serviceId, interfaceCls);
-//                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(bean, hostAndPorts, null));
-//                     addListener(serviceId);
-//                     return bean;
-//                 } else {
-//                     return serviceIdInstanceMap.get(serviceId).bean;
-//                 }
-//             }
-//         } else {
-//             if (beanAndAllHostAndPort.bean == null) {
-//                 synchronized (ServiceFactory.class) {
-//                     if (serviceIdInstanceMap.get(serviceId).bean == null) {
-//                         beanAndAllHostAndPort.bean = getServiceBean0(serviceId, interfaceCls);
-//                     }
-//                     return beanAndAllHostAndPort.bean;
-//                 }
-//             } else {
-//                 return beanAndAllHostAndPort.bean;
-//             }
-//         }
-//     }
-
-//     public static Object getServiceBean(String serviceName, Class interfaceCls, int timeout) throws NacosException {
-//         return getServiceBean(serviceName, "default", interfaceCls, timeout);
-//     }
-
-
-//     /**
-//      * Description:获取远程服务代理对象，通过这个对象可以调用远程服务的方法，就和调用本地方法一样
-//      * 代理对象是单例的
-//      *
-//      * @param serviceName  需要远程调用的服务名
-//      * @param group        需要远程调用的组
-//      * @param interfaceCls 本地和远程服务实现的接口
-//      * @param timeout      rpc调用的超时时间,单位是毫秒,超过这个时间没返回则抛 {@link RpcTimeoutException}
-//      */
-//     public static Object getServiceBean(String serviceName, String group, Class interfaceCls, int timeout) throws NacosException {
-//         checkTimeOut(timeout);
-//         String serviceId = serviceName + "." + group;
-//         BeanAndAllHostAndPort beanAndAllHostAndPort;
-//         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
-//             synchronized (ServiceFactory.class) {
-//                 if (serviceIdInstanceMap.get(serviceId) == null) {
-//                     List<String> hostAndPorts = new ArrayList<>();
-//                     for (Instance instance : naming.selectInstances(serviceId, true)) {
-//                         hostAndPorts.add(instance.getIp() + Cons.COLON + instance.getPort());
-//                     }
-//                     Object beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
-//                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(null, hostAndPorts, beanWithTimeOut));
-//                     addListener(serviceId);
-//                     return beanWithTimeOut;
-//                 } else {
-//                     return serviceIdInstanceMap.get(serviceId).beanWithTimeOut;
-//                 }
-//             }
-//         } else {
-//             if (beanAndAllHostAndPort.beanWithTimeOut == null) {
-//                 synchronized (ServiceFactory.class) {
-//                     if (serviceIdInstanceMap.get(serviceId).beanWithTimeOut == null) {
-//                         beanAndAllHostAndPort.beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
-//                     }
-//                     return beanAndAllHostAndPort.beanWithTimeOut;
-//                 }
-//             } else {
-//                 return beanAndAllHostAndPort.beanWithTimeOut;
-//             }
-//         }
-//     }
-
-
-
-     /* public static Object getAsyServiceBean(String serviceId, Class interfaceCls, int timeout) {
-        return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{interfaceCls}, new InvocationHandler() {
-            @Override
-            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-
-                return null;
-            }
-        });
-    }*/
-
-
-     /**
-      * Description:校验参数
-      **/
-     private static void checkTimeOut(long timeout) {
-         if (timeout <= 0) {
-             throw new IllegalArgumentException("timeout need to be greater than 0");
+     private static void registerById(String id) {
+         try {
+             List<Instance> services = naming.selectInstances(id, true);
+             // 注册服务商
+             services.forEach(instance -> doRegister(id, instance));
+         } catch (NacosException e) {
+             e.printStackTrace();
          }
      }
 
@@ -242,8 +164,8 @@
          return services.values().stream().flatMap(Collection::stream).anyMatch(mete::equals);
      }
 
-     private static boolean containsId(String id) {
-         return services.values().stream().flatMap(Collection::stream).map(ServiceMete::getId).anyMatch(id::equals);
+     private static boolean containsServiceId(String id) {
+         return services.values().stream().flatMap(Collection::stream).map(ServiceMete::getId).noneMatch(id::equals);
      }
 
      private static void removeServiceMete(ServiceMete mete) {
@@ -275,7 +197,7 @@
          if (ObjectUtils.isEmpty(res)) {
              return;
          }
-         res.get(serviceId).forEach(v-> {
+         res.get(serviceId).forEach(v -> {
              if (services.containsKey(encoderApiMete(v))) {
                  services.get(encoderApiMete(v)).add(ServiceMete.builder().id(serviceId).ip(instance.getIp()).port(instance.getPort()).build());
              } else {
@@ -288,41 +210,28 @@
      private static Service encoderApiMete(ApiMeteDate apiMeteDate) {
          Service service = new Service(apiMeteDate.getService(), apiMeteDate.getMethodName(), apiMeteDate.getParamTypes());
          if (StringUtils.isNotBlank(apiMeteDate.getUrl())) {
-             Api api = new Api(apiMeteDate.getUrl(), apiMeteDate.getType());
+             Api api = new Api(apiMeteDate.getUrl(), apiMeteDate.getType(), apiMeteDate.getParmaNames());
              apiServiceMap.put(api, service);
              serviceApiMap.put(service, api);
          }
          return service;
      }
 
-//
-//     private static Object getServiceBean0(String serviceId, Class interfaceCls) {
-//         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
-//                 new Class[]{interfaceCls}, (proxy, method, args) -> {
-//                     Object result;
-//                     if ((result = callAndGetResult(method, serviceId, Long.MAX_VALUE, args)) instanceof String &&
-//                             ((String) result).startsWith(Cons.EXCEPTION)) {
-//                         throw new RemoteException(((String) result).substring(Cons.THREE));
-//                     }
-//                     return result;
-//                 });
-//     }
-
-//     private static Object getServiceBean0(String serviceId, Class interfaceCls, int timeout) {
-//         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
-//                 new Class[]{interfaceCls}, (proxy, method, args) -> {
-//                     Object result = callAndGetResult(method, serviceId, System.currentTimeMillis() + timeout, args);
-//                     if (result instanceof String && ((String) result).startsWith(Cons.EXCEPTION)) {
-//                         String message;
-//                         if (Cons.TIMEOUT.equals(message = ((String) result).substring(Cons.THREE))) {
-//                             throw new RpcTimeoutException("rpc timeout");
-//                         } else {
-//                             throw new RemoteException(message);
-//                         }
-//                     }
-//                     return result;
-//                 });
-//     }
+     private static Object proxy(String service, Class<?> interfaceCls, long timeout) {
+         return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
+                 new Class[]{interfaceCls}, (proxy, method, args) -> {
+                     Object result = callAndGetResult(new RpcRequest.Builder().service(service, method.getName(), method.getParameterTypes()), timeout, args);
+                     if (result instanceof String && ((String) result).startsWith(Cons.EXCEPTION)) {
+                         String message;
+                         if (Cons.TIMEOUT.equals(message = ((String) result).substring(Cons.THREE))) {
+                             throw new RpcTimeoutException("rpc timeout");
+                         } else {
+                             throw new RemoteException(message);
+                         }
+                     }
+                     return result;
+                 });
+     }
 
      private static void apiRegister(String id) throws NacosException {
          for (Instance instance : naming.selectInstances(id, true)) {
@@ -330,68 +239,93 @@
          }
      }
 
-     public static synchronized void apiAccess() {
-         if (!start) {
-             start = true;
-             LOGGER.info("启动");
-             registerThreadPool.execute(() -> {
-                 try {
-                     while (true) {
-                         int start = 1;
-                         int size = 50;
-                         int count = Integer.MAX_VALUE;
-                         while ((start * size) < count) {
-                             ListView<String> res = naming.getServicesOfServer(start, size);
-                             count = res.getCount();
-                             ++start;
-                             if (ObjectUtils.isNotEmpty(res.getData())) {
-                                 for (String id : res.getData()) {
-                                     if (!containsId(id)) {
-                                         // 新服务注册
-                                         apiRegister(id);
-                                         addListener(id);
+     public static void async() {
+         while (state.get() != ServiceState.RUNNING) ;
+     }
+
+     public static void apiAccess() {
+
+         if (state.get() != ServiceState.RUNNING) {
+             synchronized (ServiceFactory.class) {
+                 if (state.get() != ServiceState.RUNNING) {
+                     LOGGER.info("启动");
+                     registerThreadPool.execute(() -> {
+                         try {
+                             while (true) {
+                                 int start = 1;
+                                 int size = 50;
+                                 int count = Integer.MAX_VALUE;
+                                 while ((start * size) < count) {
+                                     ListView<String> res = naming.getServicesOfServer(start, size);
+                                     count = res.getCount();
+                                     ++start;
+                                     if (ObjectUtils.isNotEmpty(res.getData())) {
+                                         for (String id : res.getData()) {
+                                             if (containsServiceId(id)) {
+                                                 // 新服务注册
+                                                 apiRegister(id);
+                                                 addListener(id);
+                                             }
+                                         }
                                      }
                                  }
+                                 state.set(ServiceState.RUNNING);
+                                 TimeUnit.SECONDS.sleep(5);
                              }
+                         } catch (Exception e) {
+                             LOGGER.error("服务发现异常", e);
+                             state.set(ServiceState.ERROR);
                          }
-                         TimeUnit.SECONDS.sleep(5);
-                     }
-                 } catch (Exception e) {
-                     LOGGER.error("服务发现异常", e);
+                     });
                  }
-             });
+             }
+
          }
-//         BeanAndAllHostAndPort beanAndAllHostAndPort;
-//         if ((beanAndAllHostAndPort = serviceIdInstanceMap.get(serviceId)) == null) {
-//             synchronized (ServiceFactory.class) {
-//                 if (serviceIdInstanceMap.get(serviceId) == null) {
-//                     List<String> hostAndPorts = new ArrayList<>();
-//                     for (Instance instance : naming.selectInstances(serviceId, true)) {
-//                         hostAndPorts.add(instance.getIp() + Cons.COLON + instance.getPort());
-//                     }
-//                     Object beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
-//                     serviceIdInstanceMap.put(serviceId, new BeanAndAllHostAndPort(null, hostAndPorts, beanWithTimeOut));
-//                     addListener(serviceId);
-//                     return beanWithTimeOut;
-//                 } else {
-//                     return serviceIdInstanceMap.get(serviceId).beanWithTimeOut;
-//                 }
-//             }
-//         } else {
-//             if (beanAndAllHostAndPort.beanWithTimeOut == null) {
-//                 synchronized (ServiceFactory.class) {
-//                     if (serviceIdInstanceMap.get(serviceId).beanWithTimeOut == null) {
-//                         beanAndAllHostAndPort.beanWithTimeOut = getServiceBean0(serviceId, interfaceCls, timeout);
-//                     }
-//                     return beanAndAllHostAndPort.beanWithTimeOut;
-//                 }
-//             } else {
-//                 return beanAndAllHostAndPort.beanWithTimeOut;
-//             }
-//         }
+     }
+
+     private static Object callAndGetResult(List<ServiceMete> metes, RpcRequest rpcRequest, long deadline, Object... args) {
+         try {
+             //根据serviceid找到所有提供这个服务的ip+port
+             Thread thisThread = Thread.currentThread();
+             return doCall(metes, rpcRequest, deadline, thisThread, args);
+         } catch (ConnectException e) {
+             //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
+             if (System.currentTimeMillis() > deadline) {
+                 ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
+                 return Cons.EXCEPTION + Cons.TIMEOUT;
+             } else {
+                 return callAndGetResult(rpcRequest, deadline, args);
+             }
+         } catch (IllegalArgumentException e) {
+             ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
+             throw new CallException("no service available");
+         }
+     }
+
+     private static Object doCall(List<ServiceMete> metes, RpcRequest rpcRequest, long deadline, Thread thisThread, Object[] args) throws ConnectException {
+         RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType()).mete(rpcRequest.getMete())
+                 .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();
+         filters.chainBefore(request);
+         ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(System.currentTimeMillis() + deadline, thisThread);
+         ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
+         ServiceMete serviceMete = metes.get(ThreadLocalRandom.current().nextInt(metes.size()));
+         channelPool.getChannel(serviceMete.address())
+                 .writeAndFlush(RequestSearialUtil.serialize(request));
+         Object result;
+         //用while，防止虚假唤醒
+         while ((result = threadResultAndTime.getResult()) == null) {
+             LockSupport.park();
+         }
+         filters.chainAfter(request, result);
+         return result;
      }
 
      public static Object callAndGetResult(RpcRequest rpcRequest, long deadline, Object... args) {
+         if (state.get() != ServiceState.RUNNING) {
+             while (state.get() != ServiceState.RUNNING)
+                 LOGGER.warn("服务暂不可用 state={}", state.get());
+             return null;
+         }
          try {
              //根据serviceid找到所有提供这个服务的ip+port
              Thread thisThread = Thread.currentThread();
@@ -399,24 +333,12 @@
              List<ServiceMete> metes;
              if (rpcRequest.isApi()) {
                  Service service = apiServiceMap.get((Api) key);
-                 metes= services.get(service);
+                 metes = services.get(service);
              } else {
                  metes = services.get(((Service) key));
              }
-             RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType())
-                     .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();
-
-             ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(deadline, thisThread);
-             ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
-             ServiceMete serviceMete = metes.get(ThreadLocalRandom.current().nextInt(metes.size()));
-             channelPool.getChannel(serviceMete.address())
-                     .writeAndFlush(RequestSearialUtil.serialize(request));
-             Object result;
-             //用while，防止虚假唤醒
-             while ((result = threadResultAndTime.getResult()) == null) {
-                 LockSupport.park();
-             }
-             return result;
+             Optional.ofNullable(metes).filter(ObjectUtils::isNotEmpty).orElseThrow(() -> new CallException("无服务"));
+             return doCall(metes, rpcRequest, deadline, thisThread, args);
          } catch (ConnectException e) {
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
@@ -432,6 +354,10 @@
      }
 
      public static Object callAndGetResult(String hostAndPorts, RpcRequest rpcRequest, long deadline, Object... args) {
+         if (rpcRequest.isApi() && state.get() != ServiceState.RUNNING) {
+             LOGGER.warn("服务暂不可用 state={}", state.get());
+             return null;
+         }
          try {
              //根据serviceid找到所有提供这个服务的ip+port
              Thread thisThread = Thread.currentThread();
@@ -440,9 +366,10 @@
                  Service service = apiServiceMap.get((Api) key);
                  rpcRequest.conv(service);
              }
-             RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType())
+             RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType()).mete(rpcRequest.getMete())
                      .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();
-             ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(deadline, thisThread);
+             filters.chainBefore(request);
+             ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(System.currentTimeMillis() + deadline, thisThread);
              ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
              channelPool.getChannel(hostAndPorts)
                      .writeAndFlush(RequestSearialUtil.serialize(request));
@@ -451,6 +378,7 @@
              while ((result = threadResultAndTime.getResult()) == null) {
                  LockSupport.park();
              }
+             filters.chainAfter(request, result);
              return result;
          } catch (ConnectException e) {
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
@@ -466,33 +394,4 @@
          }
      }
 
-//     // todo 扩展接口调用
-//     private static Object callAndGetResult(Method method, String serviceId, long deadline, Object... args) throws Exception {
-//         try {
-//             //根据serviceid找到所有提供这个服务的ip+port
-//             List<String> hostAndPorts = serviceIdInstanceMap.get(serviceId).hostAndPorts;
-//             Thread thisThread = Thread.currentThread();
-//             ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(deadline, thisThread);
-//             ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
-//             channelPool.getChannel(hostAndPorts.get(ThreadLocalRandom.current().nextInt(hostAndPorts.size())))
-//                     .writeAndFlush(RequestSearialUtil.serialize(new RequestDTO(thisThread.getId(), serviceId, method.getName(), method.getParameterTypes(), args)));
-//             Object result;
-//             //用while，防止虚假唤醒
-//             while ((result = threadResultAndTime.getResult()) == null) {
-//                 LockSupport.park();
-//             }
-//             return result;
-//         } catch (ConnectException e) {
-//             //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
-//             if (System.currentTimeMillis() > deadline) {
-//                 ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-//                 return Cons.EXCEPTION + Cons.TIMEOUT;
-//             } else {
-//                 return callAndGetResult(method, serviceId, deadline, args);
-//             }
-//         } catch (IllegalArgumentException e) {
-//             ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-//             throw new CallException("no service available");
-//         }
-//     }
  }

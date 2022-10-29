@@ -16,6 +16,7 @@
  package zprpc.demo.nacos.producer;
 
  import com.lzp.zprpc.common.api.annotation.Gateway;
+ import com.lzp.zprpc.common.api.annotation.Query;
  import com.lzp.zprpc.common.api.annotation.RpcService;
  import com.lzp.zprpc.common.api.constant.HttpMethod;
 
@@ -29,9 +30,9 @@
  public interface DemoService {
 
      @Gateway(url = "/test", type = HttpMethod.GET)
-     String sayHello(String name);
+     String sayHello(@Query String name) throws InterruptedException;
 
      @Gateway(url = "/list", type = HttpMethod.GET)
-     String listDevice(Integer id);
+     String listDevice(@Query Integer id);
 
  }

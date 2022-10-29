@@ -13,27 +13,36 @@
   *  limitations under the License.
   */
 
-package zprpc.domo.nacos.consumer;
+ package zprpc.domo.nacos.consumer;
 
-import com.alibaba.nacos.api.exception.NacosException;
-import com.lzp.zprpc.client.nacos.ServiceFactory;
-import com.lzp.zprpc.common.util.ThreadFactoryImpl;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import zprpc.demo.nacos.api.DemoService;
-import zprpc.demo.nacos.api.TakeSecondService;
+ import com.alibaba.nacos.api.exception.NacosException;
+ import com.lzp.zprpc.client.nacos.RpcRequest;
+ import com.lzp.zprpc.client.nacos.ServiceFactory;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
+ import zprpc.demo.nacos.api.DemoService;
 
-import java.util.concurrent.*;
-
-/**
- * @author zeping lu
- *
- * 打成jar包独立启动测试结果更准确
- */
-@SpringBootApplication
-public class Consumer {
-    public static void main(String[] args) throws NacosException, InterruptedException {
-        ServiceFactory.apiAccess();
-//        //得到远程代理对象
+ /**
+  * @author zeping lu
+  * <p>
+  * 打成jar包独立启动测试结果更准确
+  */
+ @SpringBootApplication
+ public class Consumer {
+     public static void main(String[] args) throws NacosException, InterruptedException {
+         ServiceFactory.apiAccess();
+         ServiceFactory.async();
+         long start = System.currentTimeMillis();
+         ServiceFactory.callAndGetResult(new RpcRequest.Builder().service("[kylin]demoService", "sayHello", String.class), System.currentTimeMillis() + 100000, "kylin-rpc");
+         int size = 10;
+         for (int i = 0; i < size; i++) {
+             ServiceFactory.callAndGetResult(new RpcRequest.Builder().service("[kylin]demoService", "sayHello", String.class), System.currentTimeMillis() + 100000, "kylin-rpc");
+         }
+         long end = System.currentTimeMillis();
+         System.out.println(end - start);
+         System.out.println((end - start) / size);
+         DemoService service = (DemoService) ServiceFactory.getService("kylin", "demoService", DemoService.class, -1);
+         System.out.println(service.sayHello("interface"));
+         //        //得到远程代理对象
 //        DemoService demoService = (DemoService) ServiceFactory.getServiceBean("demoService", DemoService.class);
 //        //发起rpc调用并输出结果
 //        System.out.println(demoService.sayHello("world"));
@@ -67,5 +76,5 @@ public class Consumer {
 //        //超时没返回会抛出异常
 //        demoService1.sayHello("world");
 
-    }
-}
+     }
+ }

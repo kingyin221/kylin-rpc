@@ -19,11 +19,11 @@
  import com.alibaba.nacos.api.naming.NamingFactory;
  import com.alibaba.nacos.api.naming.NamingService;
  import com.lzp.zprpc.common.api.ApiMeteDate;
- import com.lzp.zprpc.common.api.annotation.Gateway;
- import com.lzp.zprpc.common.api.annotation.RpcService;
- import com.lzp.zprpc.common.annotation.Service;
+ import com.lzp.zprpc.common.api.annotation.*;
  import com.lzp.zprpc.common.api.constant.Constant;
  import com.lzp.zprpc.common.api.constant.ServiceName;
+ import com.lzp.zprpc.common.constant.Cons;
+ import com.lzp.zprpc.common.exception.CallException;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import com.lzp.zprpc.registry.util.ClazzUtils;
  import org.apache.commons.lang3.ObjectUtils;
@@ -32,6 +32,7 @@
  import org.slf4j.LoggerFactory;
 
  import java.lang.reflect.Method;
+ import java.lang.reflect.Parameter;
  import java.util.*;
  import java.util.stream.Collectors;
 
@@ -98,9 +99,18 @@
      private void regiInstanceIfNecessary(String ip, int port, Map<String, Object> idServiceMap, Class<?> cls) throws InstantiationException, IllegalAccessException, NacosException {
          if (cls.isAnnotationPresent(RpcService.class)) {
              RpcService rpcService = cls.getDeclaredAnnotation(RpcService.class);
-             registerService(rpcService, cls, ip, port, idServiceMap);
+             if (cls.isInterface()) {
+                 if (Constant.class.equals(rpcService.ref()))
+                     LOGGER.warn("接口未注册，@RpcService缺失ref {}", cls);
+                 else if (!rpcService.ref().isInterface())
+                     registerService(rpcService, cls, ip, port, idServiceMap);
+                 else
+                     LOGGER.warn("@RpcService不能注册接口 rpcService={}, class={}", rpcService, cls);
+             } else {
+                 registerService(rpcService, cls, ip, port, idServiceMap);
+             }
          } else if (Arrays.stream(cls.getDeclaredMethods()).anyMatch(method -> method.isAnnotationPresent(Gateway.class))) {
-             registerService(null, cls, ip, port, idServiceMap);
+             LOGGER.warn("服务未注册，缺失@RpcService {}", cls);
          }
      }
 
@@ -114,23 +124,21 @@
                      .orElse(rpcService.nameStrategy().getName(type));
              String module = Optional.of(rpcService.module()).filter(StringUtils::isNotBlank)
                      .orElse(Constant.DEFAULT_MODULE);
-             LOGGER.info("解析服务 module={} name={}", module, name);
+             LOGGER.info("服务解析 module={} name={}", module, name);
              id = ServiceName.FULL.serviceName(module, name);
          }
-         LOGGER.info("id ={}", id);
-
          namingService.registerInstance(id, ip, port);
          // 方法解析
          List<ApiMeteDate> mete = Arrays.stream(type.getDeclaredMethods()).filter(ObjectUtils::isNotEmpty)
                  .filter(method -> method.isAnnotationPresent(Gateway.class)).map(this::analysis)
                  .collect(Collectors.toList());
-         mete.forEach(m-> {
-             m.setServiceType(type);
+         mete.forEach(m -> {
+             m.setServiceType(type.isInterface() ? rpcService.ref() : type);
              m.setService(id);
          });
          idServiceMap.put(id, mete);
      }
-     
+
      private ApiMeteDate analysis(Method method) {
          Gateway gateway = method.getDeclaredAnnotation(Gateway.class);
          ApiMeteDate mete = ApiMeteDate.builder()
@@ -138,21 +146,31 @@
                  .type(gateway.type())
                  .methodName(method.getName())
                  .paramTypes(method.getParameterTypes())
+                 .parmaNames(analysisParams(method))
                  .build();
          LOGGER.info("方法解析 mete={}", mete);
          return mete;
      }
 
-     private String getId(Service service) {
-         String name;
-         String group;
-         if ((name = service.name()).startsWith("$")) {
-             name = System.getenv(name.substring(1));
+     private String[] analysisParams(Method method) {
+         Parameter[] parameters = method.getParameters();
+         String[] pns = new String[parameters.length];
+         int i = 0;
+         for (Parameter parameter : parameters) {
+             if (parameter.isAnnotationPresent(Query.class)) {
+                 pns[i++] = Cons.QUERY + ":" + Optional.of(parameter.getDeclaredAnnotation(Query.class).name())
+                         .filter(StringUtils::isNotBlank).orElse(parameter.getName());
+             } else if (parameter.isAnnotationPresent(Body.class)) {
+                 pns[i++] = Cons.BODY + ":" + Optional.of(parameter.getDeclaredAnnotation(Body.class).name())
+                         .filter(StringUtils::isNotBlank).orElse(parameter.getName());
+             } else if (parameter.isAnnotationPresent(Path.class)) {
+                 pns[i++] = Cons.PATH + ":" + Optional.of(parameter.getDeclaredAnnotation(Path.class).name())
+                         .filter(StringUtils::isNotBlank).orElse(parameter.getName());
+             } else {
+                 throw new CallException("no parameter type" + method);
+             }
          }
-         if ((group = service.group()).startsWith("$")) {
-             group = System.getenv(group.substring(1));
-         }
-         return name + "." + group;
+         return pns;
      }
 
      @Override

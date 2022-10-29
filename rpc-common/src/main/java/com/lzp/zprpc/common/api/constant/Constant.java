@@ -12,4 +12,14 @@ public class Constant {
     public static final String EMPTY_STRING = "";
 
     public static final String DEFAULT_MODULE = "kylin";
+
+    public static final String INVOKE_TYPE = "kylin-rpc-type";
+
+    public static final String INVOKE_API = "kylin-rpc-api";
+
+    public static final String INVOKE_SERVICE = "kylin-rpc-service";
+
+    public static String getId() {
+        return "";
+    }
 }

@@ -13,10 +13,12 @@
   *  limitations under the License.
   */
 
-package zprpc.demo.nacos.producer;
+ package zprpc.demo.nacos.producer;
 
 
-import org.springframework.stereotype.Component;
+ import org.springframework.stereotype.Component;
+
+ import java.util.concurrent.TimeUnit;
 
  /**
   * @author zeping lu
@@ -25,7 +27,8 @@ import org.springframework.stereotype.Component;
  public class DemoServiceImpl implements DemoService {
 
      @Override
-     public String sayHello(String name) {
+     public String sayHello(String name) throws InterruptedException {
+         TimeUnit.SECONDS.sleep(3);
          return "hello " + name;
      }
 

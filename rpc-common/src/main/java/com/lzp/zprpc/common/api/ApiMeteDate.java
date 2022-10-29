@@ -1,15 +1,12 @@
 package com.lzp.zprpc.common.api;
 
 import com.lzp.zprpc.common.api.constant.HttpMethod;
-import com.lzp.zprpc.common.dtos.RequestDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Arrays;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * @author ：kingyin
@@ -35,6 +32,8 @@ public class ApiMeteDate {
      */
     private Class<?>[] paramTypes;
 
+    private String[] parmaNames;
+
     private Map<String, Object> meter;
 
     private Class<?> serviceType;
@@ -42,7 +41,7 @@ public class ApiMeteDate {
     private String service;
 
     public ApiMeteDate clo() {
-        return new ApiMeteDate(url, type, methodName, paramTypes, meter, null, service);
+        return new ApiMeteDate(url, type, methodName, paramTypes, parmaNames, meter, null, service);
     }
 
 }

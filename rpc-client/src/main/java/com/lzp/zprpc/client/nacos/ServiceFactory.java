@@ -147,7 +147,8 @@
                          if (containsMete(mete)) {
                              LOGGER.info("服务下线 service={}", instance);
                              removeServiceMete(mete);
-                             LOGGER.info("注册表 reg={}", services);
+                             LOGGER.info("注册表 res={}", services);
+                             LOGGER.info("api res={}", serviceApiMap);
                          }
                      } else if (instance.isHealthy()) {
                          ServiceMete mete = new ServiceMete(instance.getIp(), instance.getPort(), serviceId);
@@ -205,6 +206,8 @@
              }
          });
          LOGGER.info("注册表 reg={}", services);
+         LOGGER.info("api res={}", serviceApiMap);
+
      }
 
      private static Service encoderApiMete(ApiMeteDate apiMeteDate) {
@@ -305,9 +308,9 @@
      private static Object doCall(List<ServiceMete> metes, RpcRequest rpcRequest, long deadline, Thread thisThread, Object[] args) throws ConnectException {
          RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType()).mete(rpcRequest.getMete())
                  .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();
-         filters.chainBefore(request);
          ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(System.currentTimeMillis() + deadline, thisThread);
          ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
+         filters.chainBefore(request);
          ServiceMete serviceMete = metes.get(ThreadLocalRandom.current().nextInt(metes.size()));
          channelPool.getChannel(serviceMete.address())
                  .writeAndFlush(RequestSearialUtil.serialize(request));
@@ -368,9 +371,10 @@
              }
              RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType()).mete(rpcRequest.getMete())
                      .service(rpcRequest.getVar1()).methodName(rpcRequest.getVar2()).threadId(thisThread.getId()).build();
-             filters.chainBefore(request);
+
              ResultHandler.ThreadResultAndTime threadResultAndTime = new ResultHandler.ThreadResultAndTime(System.currentTimeMillis() + deadline, thisThread);
              ResultHandler.reqIdThreadMap.put(thisThread.getId(), threadResultAndTime);
+             filters.chainBefore(request);
              channelPool.getChannel(hostAndPorts)
                      .writeAndFlush(RequestSearialUtil.serialize(request));
              Object result;

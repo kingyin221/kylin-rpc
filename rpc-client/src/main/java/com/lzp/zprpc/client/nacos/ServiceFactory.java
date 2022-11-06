@@ -28,18 +28,16 @@
  import com.lzp.zprpc.client.connectionpool.SingleChannelPool;
  import com.lzp.zprpc.client.netty.ResultHandler;
  import com.lzp.zprpc.common.api.ApiMeteDate;
+ import com.lzp.zprpc.common.api.constant.HttpMethod;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.exception.CallException;
- import com.lzp.zprpc.common.exception.RemoteException;
- import com.lzp.zprpc.common.exception.RpcTimeoutException;
+ import com.lzp.zprpc.common.exception.ServiceException;
  import com.lzp.zprpc.common.filter.CalculateClientMeteFilter;
  import com.lzp.zprpc.common.filter.LoggerFilter;
  import com.lzp.zprpc.common.filter.RpcFilter;
- import com.lzp.zprpc.common.util.PropertyUtil;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
- import com.lzp.zprpc.registry.api.RegistryClient;
  import org.apache.commons.lang3.ObjectUtils;
  import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;
@@ -91,18 +89,42 @@
                  new ThreadFactoryImpl("rpc register"), (r, executor) -> r.run());
          filter(new CalculateClientMeteFilter());
          filter(new LoggerFilter());
-         try {
-             //如果需要查配置文件,必须打在同一classpath下(如果是OSGI环境,可以通过插件配置)
-             naming = NamingFactory.createNamingService(RegistryClient.HOST);
 
-             String connectionPoolSize;
-             if ((connectionPoolSize = PropertyUtil.getConnetionPoolSize()) == null) {
-                 channelPool = new SingleChannelPool();
-             } else {
-                 channelPool = new ServiceChannelPoolImp(Integer.parseInt(connectionPoolSize));
+     }
+
+     public static void close() {
+         if (state.get() == ServiceState.STOP) {
+             LOGGER.info("服务已关闭");
+             return;
+         }
+         if (state.get() != ServiceState.STOP) {
+             synchronized (ServiceFactory.class) {
+                 state.set(ServiceState.STOP);
              }
-         } catch (NacosException e) {
-             LOGGER.error("Throw an exception when initializing NamingService", e);
+         }
+     }
+
+     public static void connection(String host, Integer poolSize) {
+         if (state.get() == ServiceState.RUNNING) {
+             LOGGER.info("服务已启动");
+             return;
+         }
+         if (state.get() != ServiceState.STARING) {
+             synchronized (ServiceFactory.class) {
+                 try {
+                     //如果需要查配置文件,必须打在同一classpath下(如果是OSGI环境,可以通过插件配置)
+                     naming = NamingFactory.createNamingService(host);
+
+                     if (poolSize == null) {
+                         channelPool = new SingleChannelPool();
+                     } else {
+                         channelPool = new ServiceChannelPoolImp(poolSize);
+                     }
+                     state.set(ServiceState.STARING);
+                 } catch (NacosException e) {
+                     LOGGER.error("Throw an exception when initializing NamingService", e);
+                 }
+             }
          }
      }
 
@@ -131,6 +153,10 @@
          } catch (NacosException e) {
              e.printStackTrace();
          }
+     }
+
+     public static Api match(String url, HttpMethod httpMethod, Map<String, Object> pathValues) {
+         return apiServiceMap.keySet().stream().filter(a -> a.getHttpMethod().equals(httpMethod)).filter(a -> a.matchUri(url, pathValues)).findFirst().orElse(null);
      }
 
 
@@ -211,7 +237,7 @@
      }
 
      private static Service encoderApiMete(ApiMeteDate apiMeteDate) {
-         Service service = new Service(apiMeteDate.getService(), apiMeteDate.getMethodName(), apiMeteDate.getParamTypes());
+         Service service = new Service(apiMeteDate.getService(), apiMeteDate.getMethodName(), apiMeteDate.getParamTypes(), apiMeteDate.getMete());
          if (StringUtils.isNotBlank(apiMeteDate.getUrl())) {
              Api api = new Api(apiMeteDate.getUrl(), apiMeteDate.getType(), apiMeteDate.getParmaNames());
              apiServiceMap.put(api, service);
@@ -222,18 +248,8 @@
 
      private static Object proxy(String service, Class<?> interfaceCls, long timeout) {
          return Proxy.newProxyInstance(ServiceFactory.class.getClassLoader(),
-                 new Class[]{interfaceCls}, (proxy, method, args) -> {
-                     Object result = callAndGetResult(new RpcRequest.Builder().service(service, method.getName(), method.getParameterTypes()), timeout, args);
-                     if (result instanceof String && ((String) result).startsWith(Cons.EXCEPTION)) {
-                         String message;
-                         if (Cons.TIMEOUT.equals(message = ((String) result).substring(Cons.THREE))) {
-                             throw new RpcTimeoutException("rpc timeout");
-                         } else {
-                             throw new RemoteException(message);
-                         }
-                     }
-                     return result;
-                 });
+                 new Class[]{interfaceCls}, (proxy, method, args) ->
+                         callAndGetResult(new RpcRequest.Builder().service(service, method.getName(), method.getParameterTypes()), timeout, args));
      }
 
      private static void apiRegister(String id) throws NacosException {
@@ -254,7 +270,16 @@
                      LOGGER.info("启动");
                      registerThreadPool.execute(() -> {
                          try {
+                             int stopCount = 0;
                              while (true) {
+                                 if (state.get() == ServiceState.STOP || stopCount == 1)
+                                     return;
+                                 if (!"UP".equals(naming.getServerStatus())) {
+                                     LOGGER.info("注册中心连接已断开");
+                                     stopCount = 1;
+                                     TimeUnit.SECONDS.sleep(5);
+                                     continue;
+                                 }
                                  int start = 1;
                                  int size = 50;
                                  int count = Integer.MAX_VALUE;
@@ -295,7 +320,7 @@
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
                  ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return Cons.EXCEPTION + Cons.TIMEOUT;
+                 return new ServiceException(101000L, "Service not available");
              } else {
                  return callAndGetResult(rpcRequest, deadline, args);
              }
@@ -336,6 +361,7 @@
              List<ServiceMete> metes;
              if (rpcRequest.isApi()) {
                  Service service = apiServiceMap.get((Api) key);
+                 rpcRequest.conv(service);
                  metes = services.get(service);
              } else {
                  metes = services.get(((Service) key));
@@ -346,7 +372,7 @@
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
                  ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return Cons.EXCEPTION + Cons.TIMEOUT;
+                 return new ServiceException(101000L, "Service not available");
              } else {
                  return callAndGetResult(rpcRequest, deadline, args);
              }
@@ -367,6 +393,7 @@
              Object key = rpcRequest.key();
              if (rpcRequest.isApi()) {
                  Service service = apiServiceMap.get((Api) key);
+
                  rpcRequest.conv(service);
              }
              RequestDTO request = RequestDTO.builder().params(args).paramTypes(rpcRequest.getParamsType()).mete(rpcRequest.getMete())
@@ -388,7 +415,7 @@
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
                  ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return Cons.EXCEPTION + Cons.TIMEOUT;
+                 return new ServiceException(101000L, "Service not available");
              } else {
                  return callAndGetResult(hostAndPorts, rpcRequest, deadline, args);
              }

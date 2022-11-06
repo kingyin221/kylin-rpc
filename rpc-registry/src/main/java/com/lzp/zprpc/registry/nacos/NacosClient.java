@@ -21,6 +21,7 @@
  import com.lzp.zprpc.common.api.ApiMeteDate;
  import com.lzp.zprpc.common.api.annotation.*;
  import com.lzp.zprpc.common.api.constant.Constant;
+ import com.lzp.zprpc.common.api.constant.Reference;
  import com.lzp.zprpc.common.api.constant.ServiceName;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.exception.CallException;
@@ -45,16 +46,23 @@
  public class NacosClient implements RegistryClient {
      private static final Logger LOGGER = LoggerFactory.getLogger(NacosClient.class);
 
-     NamingService namingService;
+     private NamingService namingService;
 
-     {
+     public NacosClient(String host) {
+         try {
+             namingService = NamingFactory.createNamingService(host);
+         } catch (NacosException e) {
+             LOGGER.error("init nameservice failed", e);
+         }
+     }
+
+     public NacosClient() {
          try {
              namingService = NamingFactory.createNamingService(HOST);
          } catch (NacosException e) {
              LOGGER.error("init nameservice failed", e);
          }
      }
-
 
      /**
       * 扫描指定包下所有类，获得所有被com.lzp.zprpc.common.annotation.@Service修饰的类，返回实例（如果项目用到了Spring，就到
@@ -81,7 +89,7 @@
 
      @Override
      public Map<String, Object> searchAndRegiInstance(String basePack, String ip, int port) throws NacosException, InstantiationException, IllegalAccessException, ClassNotFoundException {
-         Map<String, Object> idServiceMap = new HashMap(16);
+         Map<String, Object> idServiceMap = new HashMap<>(16);
          for (String path : ClazzUtils.getClazzName(basePack)) {
              regiInstanceIfNecessary(ip, port, idServiceMap, Class.forName(path));
          }
@@ -147,10 +155,31 @@
                  .methodName(method.getName())
                  .paramTypes(method.getParameterTypes())
                  .parmaNames(analysisParams(method))
+                 .mete(analysisMate(method))
                  .build();
          LOGGER.info("方法解析 mete={}", mete);
          return mete;
      }
+
+     private Map<String, Object> analysisMate(Method method) {
+         HashMap<String, Object> map = new HashMap<>();
+         convParamType(method.getParameterTypes(), map);
+         return map;
+     }
+
+     private Class<?>[] convParamType(Class<?>[] paramTypes, Map<String, Object> mete) {
+         Class<?>[] types = new Class<?>[paramTypes.length];
+         Map<Integer, String> reTypes = new HashMap<>();
+         for (int i = 0; i < paramTypes.length; i++) {
+             types[i] = Constant.getType(paramTypes[i]);
+             if (types[i].equals(Reference.class)) {
+                 reTypes.put(i, paramTypes[i].getName());
+             }
+         }
+         mete.put(Constant.TYPE_REF, reTypes);
+         return types;
+     }
+
 
      private String[] analysisParams(Method method) {
          Parameter[] parameters = method.getParameters();
@@ -158,13 +187,16 @@
          int i = 0;
          for (Parameter parameter : parameters) {
              if (parameter.isAnnotationPresent(Query.class)) {
-                 pns[i++] = Cons.QUERY + ":" + Optional.of(parameter.getDeclaredAnnotation(Query.class).name())
+                 pns[i++] = Cons.QUERY + ":" + Optional.of(parameter.getDeclaredAnnotation(Query.class).value())
                          .filter(StringUtils::isNotBlank).orElse(parameter.getName());
              } else if (parameter.isAnnotationPresent(Body.class)) {
-                 pns[i++] = Cons.BODY + ":" + Optional.of(parameter.getDeclaredAnnotation(Body.class).name())
+                 pns[i++] = Cons.BODY + ":" + Optional.of(parameter.getDeclaredAnnotation(Body.class).value())
                          .filter(StringUtils::isNotBlank).orElse(parameter.getName());
              } else if (parameter.isAnnotationPresent(Path.class)) {
-                 pns[i++] = Cons.PATH + ":" + Optional.of(parameter.getDeclaredAnnotation(Path.class).name())
+                 pns[i++] = Cons.PATH + ":" + Optional.of(parameter.getDeclaredAnnotation(Path.class).value())
+                         .filter(StringUtils::isNotBlank).orElse(parameter.getName());
+             } else if (parameter.isAnnotationPresent(Header.class)) {
+                 pns[i++] = Cons.HEADER + ":" + Optional.of(parameter.getDeclaredAnnotation(Header.class).value())
                          .filter(StringUtils::isNotBlank).orElse(parameter.getName());
              } else {
                  throw new CallException("no parameter type" + method);

@@ -15,9 +15,7 @@
 
  package zprpc.demo.nacos.producer;
 
- import com.lzp.zprpc.common.api.annotation.Gateway;
- import com.lzp.zprpc.common.api.annotation.Query;
- import com.lzp.zprpc.common.api.annotation.RpcService;
+ import com.lzp.zprpc.common.api.annotation.*;
  import com.lzp.zprpc.common.api.constant.HttpMethod;
 
  /**
@@ -34,5 +32,8 @@
 
      @Gateway(url = "/list", type = HttpMethod.GET)
      String listDevice(@Query Integer id);
+
+     @Gateway(url = "/test/{app_id}/msg", type = HttpMethod.POST)
+     Message getMsg(@Path("app_id") String id, @Body Message msg);
 
  }

@@ -13,32 +13,32 @@
   *  limitations under the License.
   */
 
-package zprpc.demo.nacos.producer;
+ package zprpc.demo.nacos.producer;
 
-import com.lzp.zprpc.server.netty.Server;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+ import com.lzp.zprpc.common.filter.ParamsJsonDecoderFilter;
+ import com.lzp.zprpc.server.netty.Server;
+ import com.lzp.zprpc.server.netty.ServiceHandler;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 
  /**
- * @author zeping lu
- *
- * 打成jar包独立启动测试结果更准确
- */
-@SpringBootApplication
+  * @author zeping lu
+  * <p>
+  * 打成jar包独立启动测试结果更准确
+  */
+ @SpringBootApplication
 ///把SpringUtil这个类导入到spring容器中，这样在初始化服务的时候，如果spring容器中有实例，就会用spring容器中的实例
 //@Import(SpringUtil.class)
-public class Main {
-    public static void main(String[] args) throws Exception {
-        ///如果需要用到spring，就加入下面这行，这里不需要
-        //SpringApplication.run(Main.class, args);
-        Server.startRpcServer();
-        //测试手动关闭服务
+ public class Main {
+     public static void main(String[] args) throws Exception {
+         ///如果需要用到spring，就加入下面这行，这里不需要
+         //SpringApplication.run(Main.class, args);
+         ServiceHandler.filter(new ParamsJsonDecoderFilter());
+         Server.startRpcServer("175.178.221.120:8848", "zprpc.demo.nacos.producer");
+         //测试手动关闭服务
         /*Thread.sleep(10000);
         Server.closeRpcServer(0, TimeUnit.SECONDS);
         Thread.sleep(3000);
         Server.startRpcServer();*/
-    }
-}
+     }
+ }

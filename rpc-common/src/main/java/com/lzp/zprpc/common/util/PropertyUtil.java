@@ -18,7 +18,6 @@
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
 
- import java.io.InputStream;
  import java.util.Properties;
 
  /**
@@ -31,14 +30,14 @@
      private static final Logger LOGGER = LoggerFactory.getLogger(PropertyUtil.class);
      private static Properties properties = new Properties();
 
-     static {
-         InputStream in = PropertyUtil.class.getClassLoader().getResourceAsStream("zprpc.properties");
-         try {
-             properties.load(in);
-         } catch (Exception e) {
-             LOGGER.error("load zprpc.properties failed", e);
-         }
-     }
+//     static {
+//         InputStream in = PropertyUtil.class.getClassLoader().getResourceAsStream("rpc.properties");
+//         try {
+//             properties.load(in);
+//         } catch (Exception e) {
+//             LOGGER.error("load rpc.properties failed", e);
+//         }
+//     }
 
      public static Properties getProperties() {
          return properties;
@@ -49,10 +48,9 @@
          return properties.getProperty("basePack");
      }
 
-     public static String getConnetionPoolSize() {
-         return properties.getProperty("connetionPoolSize");
+     public static String getConnectionPoolSize() {
+         return properties.getProperty("connectionPoolSize");
      }
-
 
 
  }

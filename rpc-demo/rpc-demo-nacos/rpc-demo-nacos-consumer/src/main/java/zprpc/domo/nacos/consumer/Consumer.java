@@ -18,6 +18,7 @@
  import com.alibaba.nacos.api.exception.NacosException;
  import com.lzp.zprpc.client.nacos.RpcRequest;
  import com.lzp.zprpc.client.nacos.ServiceFactory;
+ import com.lzp.zprpc.common.api.constant.HttpMethod;
  import org.springframework.boot.autoconfigure.SpringBootApplication;
  import zprpc.demo.nacos.api.DemoService;
 
@@ -29,10 +30,12 @@
  @SpringBootApplication
  public class Consumer {
      public static void main(String[] args) throws NacosException, InterruptedException {
+         ServiceFactory.connection("175.178.221.120:8848", null);
          ServiceFactory.apiAccess();
          ServiceFactory.async();
          long start = System.currentTimeMillis();
          ServiceFactory.callAndGetResult(new RpcRequest.Builder().service("[kylin]demoService", "sayHello", String.class), System.currentTimeMillis() + 100000, "kylin-rpc");
+         ServiceFactory.callAndGetResult(new RpcRequest.Builder().api("/test", HttpMethod.GET), System.currentTimeMillis() + 100000, "kylin-rpc");
          int size = 10;
          for (int i = 0; i < size; i++) {
              ServiceFactory.callAndGetResult(new RpcRequest.Builder().service("[kylin]demoService", "sayHello", String.class), System.currentTimeMillis() + 100000, "kylin-rpc");

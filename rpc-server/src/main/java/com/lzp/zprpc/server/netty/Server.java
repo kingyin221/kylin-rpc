@@ -50,23 +50,24 @@
       */
      private static RegistryClient registryClient;
 
-     public synchronized static void startRpcServer(String ip, int port) {
+     public synchronized static void startRpcServer(String ip, int port, String host, String basePack) {
          if (Server.port != 0) {
              throw new RuntimeException("The server has started");
          }
          bossGroup = new NioEventLoopGroup(1);
          workerGroup = new NioEventLoopGroup(1);
-         startServer0(ip, port);
+         startServer0(ip, port, host);
+         startServer0(ip, port, host);
          ServiceHandler.initServiceThreadPool();
-         registryClient = ServiceHandler.regiService();
+         registryClient = ServiceHandler.regiService(host, basePack);
      }
 
-     public static void startRpcServer(int port) {
-         startRpcServer(null, port);
+     public static void startRpcServer(int port, String host, String basePack) {
+         startRpcServer(null, port, host, basePack);
      }
 
-     public static void startRpcServer() {
-         startRpcServer(null, 0);
+     public static void startRpcServer(String host, String basePack) {
+         startRpcServer(null, 0, host, basePack);
      }
 
      /**
@@ -102,74 +103,13 @@
      }
 
 
-     ///不去遍历网卡了，用能连同注册中心的ip来发布
-     /*public static String getIpAddress(List<String> excludedIp) {
-         try {
-             Enumeration<NetworkInterface> allNetInterfaces = NetworkInterface.getNetworkInterfaces();
-             InetAddress ip;
-             String ifName;
-             while (allNetInterfaces.hasMoreElements()) {
-                 NetworkInterface netInterface = allNetInterfaces.nextElement();
-                 if (!netInterface.isLoopback() && !netInterface.isVirtual() && netInterface.isUp()
-                         && !(ifName = netInterface.getDisplayName()).contains(Cons.DOCKER_NAME)
-                         && !ifName.contains(Cons.K8S_NAME)) {
-                     Enumeration<InetAddress> addresses = netInterface.getInetAddresses();
-                     while (addresses.hasMoreElements()) {
-                         ip = addresses.nextElement();
-                         String address;
-                         if (ip instanceof Inet4Address && !excludedIp.contains(address = ip.getHostAddress())) {
-                             return address;
-                         }
-                     }
-                 }
-             }
-         } catch (Exception e) {
-             LOGGER.error("failed to find ip", e);
-         }
-         throw new NoFreeIpException("All ip ports are occupied");
-     }*/
-
-     /*private static synchronized void startServer0(String ip, int port) {
-         List<String> excludedIps= new ArrayList<>();
-         Server.ip = ip == null ? getIpAddress(null) : ip;
-         ServerBootstrap serverBootstrap = new ServerBootstrap()
-                 .group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-                 ///测了下，禁用Nagle算法并没有带来明显的性能提升，考虑到会占用更多带宽，暂时就不开启
-                 *//*.childOption(ChannelOption.TCP_NODELAY,true)*//*
-                 .childHandler(new SocketChannelInitializerForServer());
-         try {
-             Channel channel;
-             if (port == 0) {
-                 for (; ; ) {
-                     try {
-                         channel = bind(Server.ip, serverBootstrap);
-                         break;
-                     } catch (NoFreePortException e) {
-                         //进到这里说明,上一个ip的端口已经被占用完了，如果是指定ip的,直接抛异常
-                         if (ip == null) {
-                             excludedIps.add(ip);
-                             Server.ip = getIpAddress(excludedIps);
-                         } else {
-                             throw e;
-                         }
-                     }
-                 }
-             } else {
-                 channel = serverBootstrap.bind(Server.ip, Server.port = port).sync().channel();
-             }
-             channel.closeFuture().addListener(future -> Server.closeRpcServer(0, TimeUnit.SECONDS));
-         } catch (InterruptedException e) {
-             LOGGER.error(e.getMessage(), e);
-         }
-     }*/
-
      /**
-     *找到能和注册中心建立TCP连接的ip
-     * 如果连不上注册中心，返回环回地址
-      * */
-     private static String getLocalIpAddressToRegistry() {
+      * 找到能和注册中心建立TCP连接的ip
+      * 如果连不上注册中心，返回环回地址
+      */
+     private static String getLocalIpAddressToRegistry(String target) {
          Socket socket = null;
-         String[] hosts = RegistryClient.HOST.split(Cons.COMMA);
+         String[] hosts = target.split(Cons.COMMA);
          for (String host : hosts) {
              try {
                  String[] hostAndPort = host.split(":");
@@ -189,8 +129,8 @@
      }
 
 
-     private static synchronized void startServer0(String ip, int port) {
-         Server.ip = ip == null ? getLocalIpAddressToRegistry() : ip;
+     private static synchronized void startServer0(String ip, int port, String host) {
+         Server.ip = ip == null ? getLocalIpAddressToRegistry(host) : ip;
          ServerBootstrap serverBootstrap = new ServerBootstrap()
                  .group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
                  ///测了下，禁用Nagle算法并没有带来明显的性能提升，考虑到会占用更多带宽，暂时就不开启

@@ -19,26 +19,16 @@ package com.lzp.zprpc.client.redis;
  import com.lzp.zprpc.client.connectionpool.FixedShareableChannelPool;
  import com.lzp.zprpc.client.connectionpool.ServiceChannelPoolImp;
  import com.lzp.zprpc.client.connectionpool.SingleChannelPool;
- import com.lzp.zprpc.client.netty.ResultHandler;
- import com.lzp.zprpc.common.constant.Cons;
- import com.lzp.zprpc.common.dtos.RequestDTO;
- import com.lzp.zprpc.common.exception.CallException;
- import com.lzp.zprpc.common.exception.RemoteException;
  import com.lzp.zprpc.common.exception.RpcTimeoutException;
  import com.lzp.zprpc.common.util.PropertyUtil;
- import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
 
- import java.lang.reflect.Method;
- import java.lang.reflect.Proxy;
- import java.net.ConnectException;
  import java.util.List;
  import java.util.Map;
  import java.util.concurrent.*;
- import java.util.concurrent.locks.LockSupport;
 
  /**
   * Description:提供代理bean，用以远程调服务。代理bean是单例的
@@ -66,7 +56,7 @@ package com.lzp.zprpc.client.redis;
      static {
          try {
              String connectionPoolSize;
-             if ((connectionPoolSize = PropertyUtil.getConnetionPoolSize()) == null) {
+             if ((connectionPoolSize = PropertyUtil.getConnectionPoolSize()) == null) {
                  channelPool = new SingleChannelPool();
              } else {
                  channelPool = new ServiceChannelPoolImp(Integer.parseInt(connectionPoolSize));

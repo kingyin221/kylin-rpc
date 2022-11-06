@@ -37,4 +37,10 @@
          return "hello" + id;
      }
 
+     @Override
+     public Message getMsg(String id, Message msg) {
+         msg.setMsg(id + msg.getMsg());
+         return msg;
+     }
+
  }

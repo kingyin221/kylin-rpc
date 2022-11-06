@@ -2,6 +2,8 @@ package com.lzp.zprpc.client.nacos;
 
 import lombok.*;
 
+import java.util.Map;
+
 /**
  * @author leize
  * @date 2022/10/26
@@ -16,6 +18,7 @@ public class Service {
     private String service;
     private String methodName;
     private Class<?>[] paramTypes;
+    private Map<String, Object> mete;
 
 
 }

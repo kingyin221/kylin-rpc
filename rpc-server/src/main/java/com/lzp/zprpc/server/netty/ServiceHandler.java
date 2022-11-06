@@ -15,21 +15,22 @@
 
  package com.lzp.zprpc.server.netty;
 
+ import com.alibaba.fastjson2.JSON;
  import com.lzp.zprpc.common.api.ApiMeteDate;
+ import com.lzp.zprpc.common.api.constant.Constant;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.dtos.ResponseDTO;
  import com.lzp.zprpc.common.exception.CallException;
+ import com.lzp.zprpc.common.exception.ServiceException;
  import com.lzp.zprpc.common.filter.CalculateServiceMeteFilter;
  import com.lzp.zprpc.common.filter.LoggerFilter;
  import com.lzp.zprpc.common.filter.RpcFilter;
- import com.lzp.zprpc.common.util.PropertyUtil;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ResponseSearialUtil;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import com.lzp.zprpc.registry.nacos.NacosClient;
- import com.lzp.zprpc.registry.redis.RedisClient;
  import com.lzp.zprpc.server.util.LogoUtil;
  import io.netty.channel.ChannelHandlerContext;
  import io.netty.channel.SimpleChannelInboundHandler;
@@ -44,6 +45,7 @@
  import java.util.Set;
  import java.util.concurrent.*;
  import java.util.stream.Collectors;
+
 
  /**
   * Description:根据消息调用相应服务的handler
@@ -109,10 +111,17 @@
                  res.put(k, as);
              }
          });
+         System.out.println(res);
          return res;
      }
 
-     private static MethodMete convApiMete(RequestDTO requestDTO) {
+     private static MethodMete convApiMete(RequestDTO requestDTO) throws ClassNotFoundException {
+         if (requestDTO.getMete().containsKey(Constant.TYPE_REF)) {
+             Map<Integer, String> reTypes = (Map<Integer, String>) requestDTO.getMete().get(Constant.TYPE_REF);
+             for (Integer site : reTypes.keySet()) {
+                 requestDTO.getParamTypes()[site] = Class.forName(reTypes.get(site));
+             }
+         }
          return MethodMete.builder().methodName(requestDTO.getMethodName()).service(requestDTO.getService()).paramTypes(requestDTO.getParamTypes()).build();
      }
 
@@ -135,9 +144,19 @@
                  filters.chainBefore(requestDTO);
                  res = method.invoke(service, requestDTO.getParams());
                  filters.chainAfter(requestDTO, res);
+                 if (Constant.INVOKE_API.equals(requestDTO.getMete().get(Constant.INVOKE_TYPE))) {
+                     res = JSON.toJSON(res);
+                     LOGGER.info("Gateway res={}", res);
+                 }
                  channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(res, requestDTO.getThreadId())));
              } catch (Exception e) {
-                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(Cons.EXCEPTION + getDetailMsgOfException(e), requestDTO.getThreadId())));
+                 ServiceException exception;
+                 if (e instanceof ServiceException) {
+                     exception = (ServiceException) e;
+                 } else {
+                     exception = new ServiceException(null, getDetailMsgOfException(e));
+                 }
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(exception, requestDTO.getThreadId())));
              }
          });
      }
@@ -159,24 +178,23 @@
      /**
       * @return 注册中心客户端
       */
-     static RegistryClient regiService() {
+     static RegistryClient regiService(String host, String basePack) {
          try {
              //默认用nacos做注册中心
              RegistryClient registryClient;
              switch (RegistryClient.TYPE) {
                  case Cons.NACOS: {
-                     registryClient = new NacosClient();
+                     registryClient = new NacosClient(host);
                      break;
                  }
                  case Cons.REDIS: {
-                     registryClient = new RedisClient();
-                     break;
+                     throw new RuntimeException("redis 注册中心暂不支持");
                  }
                  default:
-                     registryClient = new NacosClient();
+                     registryClient = new NacosClient(host);
              }
              LogoUtil.printLogo();
-             idServiceMap = registryClient.searchAndRegiInstance(PropertyUtil.getBasePack(), Server.getIp(), Server.getPort());
+             idServiceMap = registryClient.searchAndRegiInstance(basePack, Server.getIp(), Server.getPort());
              // 非IOC框架需要手动注入
              idServiceMap.values().stream().filter(o -> o instanceof List).flatMap(l -> ((List<?>) l).stream()).forEach(s -> {
                  if (s instanceof ApiMeteDate) {

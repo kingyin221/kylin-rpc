@@ -18,6 +18,6 @@ import java.lang.annotation.Target;
 @Target(ElementType.PARAMETER)
 public @interface Path {
 
-    String name() default Constant.EMPTY_STRING;
+    String value() default Constant.EMPTY_STRING;
 
 }

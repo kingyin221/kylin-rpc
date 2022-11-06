@@ -26,7 +26,7 @@ package com.lzp.zprpc.common.constant;
  */
 public class Cons {
     public static final String TIMEOUT = "timeout";
-    public static final String EXCEPTION = "exc";
+    public static final String EXCEPTION = "exç";
     public static final int THREE = 3;
     public static final int MIN_PORT = 1024;
     public static final int MAX_PORT = 49152;
@@ -37,6 +37,7 @@ public class Cons {
     public static final String BODY = "body";
     public static final String QUERY = "query";
     public static final String PATH = "path";
+    public static final String HEADER = "header";
     public static final String NACOS = "nacos";
     public static final String REDIS = "redis";
     public static final String REGISTRY = "registry";

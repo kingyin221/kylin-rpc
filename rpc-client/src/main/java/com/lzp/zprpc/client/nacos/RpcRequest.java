@@ -4,6 +4,7 @@ import com.lzp.zprpc.common.api.constant.Constant;
 import com.lzp.zprpc.common.api.constant.HttpMethod;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -64,7 +65,7 @@ public class RpcRequest {
         if (isApi()) {
             return new Api(this.var1, this.httpMethod);
         } else {
-            return new Service(var1, var2, paramsType);
+            return new Service(var1, var2, paramsType, mete);
         }
     }
 
@@ -72,6 +73,11 @@ public class RpcRequest {
         this.var1 = service.getService();
         this.var2 = service.getMethodName();
         this.paramsType = service.getParamTypes();
+        if (ObjectUtils.isEmpty(mete)) {
+            mete = service.getMete();
+        } else {
+            mete.putAll(service.getMete());
+        }
     }
 
 

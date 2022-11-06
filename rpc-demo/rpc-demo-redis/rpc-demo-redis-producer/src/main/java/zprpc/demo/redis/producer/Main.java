@@ -13,26 +13,24 @@
   *  limitations under the License.
   */
 
-package zprpc.demo.redis.producer;
+ package zprpc.demo.redis.producer;
 
-import com.lzp.zprpc.server.netty.Server;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-import java.util.concurrent.CountDownLatch;
+ import com.lzp.zprpc.server.netty.Server;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 
-/**
- * @author zeping lu
- *
- * 打成jar包独立启动测试结果更准确
- */
-@SpringBootApplication
+ /**
+  * @author zeping lu
+  * <p>
+  * 打成jar包独立启动测试结果更准确
+  */
+ @SpringBootApplication
 ///把SpringUtil这个类导入到spring容器中，这样在初始化服务的时候，如果spring容器中有实例，就会用spring容器中的实例
 //@Import(SpringUtil.class)
-public class Main {
-    public static void main(String[] args) throws InterruptedException {
-        ///如果需要用到spring，就加入下面这行，这里不需要
-        //SpringApplication.run(Main.class, args);
-        Server.startRpcServer();
-    }
-}
+ public class Main {
+     public static void main(String[] args) throws InterruptedException {
+         ///如果需要用到spring，就加入下面这行，这里不需要
+         //SpringApplication.run(Main.class, args);
+         Server.startRpcServer("", "");
+     }
+ }

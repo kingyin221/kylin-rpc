@@ -9,14 +9,14 @@ import java.lang.annotation.Target;
 
 /**
  * @author ：kingyin
- * @date ：创建于 2022/10/29 16:44
+ * @date ：创建于 2022/10/31 21:07
  * @description ：
  * @modified By：
  * @version: 1.0.0
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.PARAMETER)
-public @interface Query {
+public @interface Header {
 
     String value() default Constant.EMPTY_STRING;
 

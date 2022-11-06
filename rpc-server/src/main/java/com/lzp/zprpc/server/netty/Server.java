@@ -57,7 +57,6 @@
          bossGroup = new NioEventLoopGroup(1);
          workerGroup = new NioEventLoopGroup(1);
          startServer0(ip, port, host);
-         startServer0(ip, port, host);
          ServiceHandler.initServiceThreadPool();
          registryClient = ServiceHandler.regiService(host, basePack);
      }

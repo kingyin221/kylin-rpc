@@ -24,6 +24,7 @@
  import com.lzp.zprpc.common.exception.CallException;
  import com.lzp.zprpc.common.exception.ServiceException;
  import com.lzp.zprpc.common.filter.CalculateServiceMeteFilter;
+ import com.lzp.zprpc.common.filter.LinksFilter;
  import com.lzp.zprpc.common.filter.LoggerFilter;
  import com.lzp.zprpc.common.filter.RpcFilter;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
@@ -81,6 +82,7 @@
      }
 
      static {
+         filter(new LinksFilter());
          filter(new CalculateServiceMeteFilter());
          filter(new LoggerFilter());
      }

@@ -105,5 +105,11 @@
             <!--指定仓库地址 -->
             <url>http://175.178.221.120:8081/repository/maven-releases/</url>
         </repository>
+        <snapshotRepository>
+            <!--此id要和.m2/settings.xml中设置的id一致 -->
+            <id>kylin</id>
+            <!--指定仓库地址 -->
+            <url>http://175.178.221.120:8081/repository/maven-snapshots/</url>
+        </snapshotRepository>
     </distributionManagement>
 </project>

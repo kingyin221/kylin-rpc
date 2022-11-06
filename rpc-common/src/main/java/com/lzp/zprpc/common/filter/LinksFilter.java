@@ -14,7 +14,8 @@ import org.slf4j.MDC;
 public class LinksFilter extends AbstractRpcFilter {
     @Override
     public boolean beforeInvoke(RequestDTO request) {
-        MDC.put(Constant.REQUEST_ID, (String) request.getMete().get(Constant.REQUEST_ID));
+        if (request.getMete().containsKey(Constant.REQUEST_ID))
+            MDC.put(Constant.REQUEST_ID, (String) request.getMete().get(Constant.REQUEST_ID));
         return true;
     }
 

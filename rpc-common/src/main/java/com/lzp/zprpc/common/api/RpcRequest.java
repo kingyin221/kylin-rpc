@@ -1,4 +1,4 @@
-package com.lzp.zprpc.client.nacos;
+package com.lzp.zprpc.common.api;
 
 import com.lzp.zprpc.common.api.constant.Constant;
 import com.lzp.zprpc.common.api.constant.HttpMethod;

@@ -27,7 +27,10 @@
  import com.lzp.zprpc.client.connectionpool.ServiceChannelPoolImp;
  import com.lzp.zprpc.client.connectionpool.SingleChannelPool;
  import com.lzp.zprpc.client.netty.ResultHandler;
+ import com.lzp.zprpc.common.api.Api;
  import com.lzp.zprpc.common.api.ApiMeteDate;
+ import com.lzp.zprpc.common.api.RpcRequest;
+ import com.lzp.zprpc.common.api.Service;
  import com.lzp.zprpc.common.api.constant.HttpMethod;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
@@ -90,6 +93,18 @@
          filter(new CalculateClientMeteFilter());
          filter(new LoggerFilter());
 
+     }
+
+     public static Map<Service, List<ServiceMete>> getServices() {
+         return services;
+     }
+
+     public static Map<Api, Service> getApiServiceMap() {
+         return apiServiceMap;
+     }
+
+     public static Map<Service, Api> getServiceApiMap() {
+         return serviceApiMap;
      }
 
      public static void close() {
@@ -350,8 +365,15 @@
 
      public static Object callAndGetResult(RpcRequest rpcRequest, long deadline, Object... args) {
          if (state.get() != ServiceState.RUNNING) {
-             while (state.get() != ServiceState.RUNNING)
+             int count = 0;
+             while (state.get() != ServiceState.RUNNING || count++ < 5) {
                  LOGGER.warn("服务暂不可用 state={}", state.get());
+                 try {
+                     TimeUnit.SECONDS.sleep(1);
+                 } catch (InterruptedException e) {
+                     e.printStackTrace();
+                 }
+             }
              return null;
          }
          try {

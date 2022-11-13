@@ -19,7 +19,7 @@ package com.lzp.zprpc.registry.redis;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.lzp.zprpc.common.annotation.Service;
 import com.lzp.zprpc.common.constant.Cons;
-import com.lzp.zprpc.common.util.SpringUtil;
+import com.lzp.zprpc.common.util.SpringUtils;
 import com.lzp.zprpc.registry.api.RegistryClient;
 import com.lzp.zprpc.registry.util.ClazzUtils;
 import com.lzp.zprpc.registry.util.RedisClientFactory;
@@ -79,7 +79,7 @@ public class RedisClient implements RegistryClient {
     private void regiInstanceIfNecessary(com.lzp.zprpc.registry.api.RedisClient redisClient, String ip, int port, Map<String, Object> idServiceMap, Class cls) throws InstantiationException, IllegalAccessException {
         if (cls.isAnnotationPresent(Service.class)) {
             String id = getId((Service) cls.getAnnotation(Service.class));
-            Map<String, Object> nameInstanceMap = SpringUtil.getBeansOfType(cls);
+            Map<String, Object> nameInstanceMap = SpringUtils.getBeansOfType(cls);
             if (nameInstanceMap.size() != 0) {
                 idServiceMap.put(id, nameInstanceMap.entrySet().iterator().next().getValue());
             } else {

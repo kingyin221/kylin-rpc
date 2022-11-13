@@ -1,4 +1,4 @@
-package com.lzp.zprpc.client.nacos;
+package com.lzp.zprpc.common.api;
 
 import com.lzp.zprpc.common.api.constant.HttpMethod;
 import lombok.AllArgsConstructor;
@@ -25,7 +25,7 @@ public class Api {
     private HttpMethod httpMethod;
 
     private String[] paramNames;
-    
+
     public Api(String url, HttpMethod httpMethod) {
         this.url = url;
         this.httpMethod = httpMethod;

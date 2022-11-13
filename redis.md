@@ -1,16 +1,23 @@
 # redis做注册中心
-            
-# 	使用方法：
+
+# 使用方法：
+
 ### 一、环境搭建(如果环境已搭好，可跳过)
+
     1、拉取代码到本地,在项目根目录执行maven安装命令:mvn clean install
     2、上传到私服仓库(可跳过,如果做了,后续就不用执行第1步了，直接依赖maven坐标就行)
     3、搭建redis环境：(如果有redis环境，跳过)
-	
+
 ### 二、创建工程、导入依赖、编写配置与代码
+
 ##### 定义公共接口
+
     新建一个工程，定义公共接口，供服务提供方和服务消费方依赖    
+
 注意：没必要在接口声明抛出自定义的异常，因为这个rpc只会抛出以下三个异常[CallException](https://github.com/65487123/zprpc/blob/master/rpc-common/src/main/java/com/lzp/zprpc/common/exception/CallException.java)、[RemoteException](https://github.com/65487123/zprpc/blob/master/rpc-common/src/main/java/com/lzp/zprpc/common/exception/RemoteException.java)、[RpcTimeoutException](https://github.com/65487123/zprpc/blob/master/rpc-common/src/main/java/com/lzp/zprpc/common/exception/RpcTimeoutException.java)
+
 ##### 服务提供方
+
     1、创建服务提供方工程，依赖提供接口的工程，并导入maven依赖
     <dependency>
          <groupId>com.lzp.zprpc</groupId>
@@ -38,7 +45,7 @@
    
     服务提供方启动后，会扫描被@Service注解修饰的服务，初始化后保存在本地(都是单例的)，并把服务发布到redis中。
  
-    如果项目用到了spring,并且服务也被注册到了spring容器中,推荐在spring启动类上加入@Import(com.lzp.zprpc.common.util.SpringUtil.class)。
+    如果项目用到了spring,并且服务也被注册到了spring容器中,推荐在spring启动类上加入@Import(com.lzp.zprpc.common.util.SpringUtils.class)。
     先启动spring容器然后再启动rpc服务。这样在发布服务时，会先到spring容器中去找，如果spring容器中有服务实例，就会用spring中的。如果没有就会自己初始化一个。
    
     如果集群部署的话，建议同一个服务发布的个数为2的整次方，这样客户端在负载均衡时性能能更高
@@ -46,7 +53,9 @@
     5、如果想在不关停JVM的情况下关闭RPC服务,可以调用Server.closeRpcServer(long timeToWait, TimeUnit unit)。
     调用后,启动服务时注册进注册中心的服务都会被注销,然后关闭线程池,最后释放server监听的端口,参数即线程池关闭时等待的时间。  
     如果想再次启动服务,再次执行第4步就行。
-##### 服务消费方   
+
+##### 服务消费方
+
     1、创建服务消费方工程，依赖提供接口的工程，并导入依赖
     <dependency>
          <groupId>com.lzp.zprpc</groupId>
@@ -68,10 +77,9 @@
     ServiceFactory.getServiceBean(String serviceName,String group,Class interfaceCls,int timeOut);
     或者ServiceFactory.getServiceBean(String serviceName,Class interfaceCls,int timeOut);
     来获取代理对象，通过这个对象远程调用会有超时限制，超过指定秒数没返回结果就会抛出超时异常。
-    
-    
-    
- ### 三、Demo 
+
+### 三、Demo
+
     源码中提供了demo，在rpc-demo工程下，包含了服务提供方工程和服务消费方工程，代码拉下来编译后直接就能跑，配置一下redisIpList，
     先启动服务提供方再启动服务消费方就能看到结果。
 

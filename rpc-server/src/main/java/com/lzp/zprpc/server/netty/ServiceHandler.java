@@ -16,7 +16,9 @@
  package com.lzp.zprpc.server.netty;
 
  import com.alibaba.fastjson2.JSON;
+ import com.lzp.zprpc.common.api.Api;
  import com.lzp.zprpc.common.api.ApiMeteDate;
+ import com.lzp.zprpc.common.api.RpcRequest;
  import com.lzp.zprpc.common.api.constant.Constant;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
@@ -29,6 +31,7 @@
  import com.lzp.zprpc.common.filter.RpcFilter;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ResponseSearialUtil;
+ import com.lzp.zprpc.common.util.SpringUtils;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import com.lzp.zprpc.registry.nacos.NacosClient;
@@ -38,7 +41,11 @@
  import org.apache.commons.lang3.ObjectUtils;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
+ import org.springframework.core.annotation.AnnotationUtils;
+ import org.springframework.stereotype.Component;
+ import org.springframework.stereotype.Service;
 
+ import java.lang.reflect.InvocationTargetException;
  import java.lang.reflect.Method;
  import java.util.HashMap;
  import java.util.List;
@@ -54,6 +61,7 @@
   * @author: Lu ZePing
   * @date: 2020/9/29 21:31
   */
+ @Service
  public class ServiceHandler extends SimpleChannelInboundHandler<byte[]> {
      private static final Logger LOGGER = LoggerFactory.getLogger(ServiceHandler.class);
 
@@ -61,9 +69,11 @@
 
      private static ExecutorService serviceThreadPool;
 
-     private static Map<Class<?>, Object> services = new ConcurrentHashMap<>();
+     private static final Map<Class<?>, Object> services = new ConcurrentHashMap<>();
 
-     private static Map<MethodMete, Class<?>> serviceClassMap = new ConcurrentHashMap<>();
+     private static final Map<MethodMete, Class<?>> serviceClassMap = new ConcurrentHashMap<>();
+
+     private static final Map<Api, MethodMete> apiService = new ConcurrentHashMap<>();
 
      private static RpcFilter filters;
 
@@ -95,14 +105,24 @@
              if (!services.containsKey(mete.getServiceType())) {
                  Object service = null;
                  try {
-                     service = mete.getServiceType().newInstance();
+                     if (ObjectUtils.isNotEmpty(AnnotationUtils.findAnnotation(mete.getServiceType(), Component.class))) {
+                         service = SpringUtils.getBean(mete.getServiceType());
+                         LOGGER.info("从SpringIOC构建服务 service={}", service);
+                     } else {
+                         service = mete.getServiceType().newInstance();
+                         LOGGER.info("主动构建服务 service={}", service);
+                     }
                  } catch (InstantiationException | IllegalAccessException e) {
-                     LOGGER.error("服务实例华失败 service={}", mete.getService(), e);
+                     LOGGER.error("服务获取失败 service={}", mete.getService(), e);
                  }
                  services.put(mete.getServiceType(), service);
-                 LOGGER.info("服务启动 service={}", service);
+                 apiService.put(new Api(mete.getUrl(), mete.getType(), mete.getParmaNames()), methodMete);
              }
          }
+     }
+
+     public static void main(String[] args) {
+         System.out.println();
      }
 
      private Map<String, List<ApiMeteDate>> apis(String service) {
@@ -136,20 +156,8 @@
                  channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(apis((String) requestDTO.getParams()[0]), requestDTO.getThreadId())));
                  return;
              }
-             Object res;
              try {
-                 MethodMete methodMete = convApiMete(requestDTO);
-                 Class<?> key = serviceClassMap.get(methodMete);
-                 if (ObjectUtils.isEmpty(key)) throw new CallException("not found method=" + methodMete);
-                 Object service = services.get(key);
-                 Method method = service.getClass().getDeclaredMethod(methodMete.getMethodName(), methodMete.getParamTypes());
-                 filters.chainBefore(requestDTO);
-                 res = method.invoke(service, requestDTO.getParams());
-                 filters.chainAfter(requestDTO, res);
-                 if (Constant.INVOKE_API.equals(requestDTO.getMete().get(Constant.INVOKE_TYPE))) {
-                     res = JSON.toJSON(res);
-                     LOGGER.info("Gateway res={}", res);
-                 }
+                 Object res = callService(requestDTO);
                  channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(res, requestDTO.getThreadId())));
              } catch (Exception e) {
                  ServiceException exception;
@@ -161,6 +169,49 @@
                  channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(exception, requestDTO.getThreadId())));
              }
          });
+     }
+
+     public static Api get(Api api) {
+         return apiService.keySet().stream().filter(api::equals).findFirst().orElse(null);
+     }
+
+     public static Object callService(RpcRequest request, Object[] args) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+         if (request.isApi()) {
+             Api api = (Api) request.key();
+             MethodMete methodMete = apiService.get(api);
+             Class<?> key = serviceClassMap.get(methodMete);
+             if (ObjectUtils.isEmpty(key)) throw new CallException("not found url" + api.getUrl());
+             Object service = services.get(key);
+             Method method = service.getClass().getDeclaredMethod(methodMete.getMethodName(), methodMete.getParamTypes());
+             return JSON.toJSON(method.invoke(service, args));
+
+         }
+         throw new CallException("call type error");
+     }
+
+     private static Object callService(RequestDTO requestDTO) {
+         Object res;
+         try {
+             MethodMete methodMete = convApiMete(requestDTO);
+             Class<?> key = serviceClassMap.get(methodMete);
+             if (ObjectUtils.isEmpty(key)) throw new CallException("not found method=" + methodMete);
+             Object service = services.get(key);
+             Method method = service.getClass().getDeclaredMethod(methodMete.getMethodName(), methodMete.getParamTypes());
+             filters.chainBefore(requestDTO);
+             res = method.invoke(service, requestDTO.getParams());
+             filters.chainAfter(requestDTO, res);
+             if (Constant.INVOKE_API.equals(requestDTO.getMete().get(Constant.INVOKE_TYPE))) {
+                 res = JSON.toJSON(res);
+                 LOGGER.info("Gateway res={}", res);
+             }
+         } catch (Exception e) {
+             if (e instanceof ServiceException) {
+                 res = e;
+             } else {
+                 res = new ServiceException(null, getDetailMsgOfException(e));
+             }
+         }
+         return res;
      }
 
      static void initServiceThreadPool() {
@@ -211,7 +262,7 @@
          }
      }
 
-     private String getDetailMsgOfException(Throwable t) {
+     private static String getDetailMsgOfException(Throwable t) {
          Throwable th;
          do {
              th = t;

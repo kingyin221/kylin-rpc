@@ -35,16 +35,20 @@
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.exception.CallException;
- import com.lzp.zprpc.common.exception.ServiceException;
- import com.lzp.zprpc.common.filter.CalculateClientMeteFilter;
- import com.lzp.zprpc.common.filter.LoggerFilter;
+ import com.lzp.zprpc.common.exception.ServiceError;
+ import com.lzp.zprpc.common.filter.BaseApiRpcFilter;
+ import com.lzp.zprpc.common.filter.LinksClientFilter;
+ import com.lzp.zprpc.common.filter.LoggerApiRpcFilter;
  import com.lzp.zprpc.common.filter.RpcFilter;
+ import com.lzp.zprpc.common.filter.scanner.AutoScanner;
+ import com.lzp.zprpc.common.filter.scanner.FilterClientAutoScanner;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
  import org.apache.commons.lang3.ObjectUtils;
  import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
+ import org.springframework.context.ApplicationContext;
 
  import java.lang.reflect.Proxy;
  import java.net.ConnectException;
@@ -70,6 +74,8 @@
      private static final AtomicReference<ServiceState> state = new AtomicReference<>(ServiceState.STOP);
      private static final ExecutorService registerThreadPool;
 
+     private static final Long TIMEOUT = 20 * 1000L;
+
      private static RpcFilter filters;
 
      private static RpcFilter preFilter;
@@ -87,11 +93,11 @@
      }
 
      static {
-
          registerThreadPool = new ThreadPoolExecutor(3, 3, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1000),
-                 new ThreadFactoryImpl("rpc register"), (r, executor) -> r.run());
-         filter(new CalculateClientMeteFilter());
-         filter(new LoggerFilter());
+                 new ThreadFactoryImpl("rpc-register"), (r, executor) -> r.run());
+         filter(new LinksClientFilter());
+         filter(new BaseApiRpcFilter());
+         filter(new LoggerApiRpcFilter());
 
      }
 
@@ -143,15 +149,29 @@
          }
      }
 
-     public static Object getService(String module, String name, Class<?> type, long timeout) {
+     public static void scanFilter(String basePack, ApplicationContext context) throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+         AutoScanner<RpcFilter> filterAutoScanner = new FilterClientAutoScanner();
+         List<RpcFilter> rpcFilters;
+         if (ObjectUtils.isEmpty(context)) {
+             rpcFilters = filterAutoScanner.scanList(basePack);
+         } else {
+             rpcFilters = filterAutoScanner.scanList(basePack, context);
+         }
+         for (RpcFilter rpcFilter : rpcFilters) {
+             LOGGER.info("注册过滤器{}", rpcFilter.getClass().getName());
+             filter(rpcFilter);
+         }
+     }
+
+     public static Object getService(String module, String name, Class<?> type, Long timeout) {
          // 构建id
          String id = buildId(module, name);
          if (containsServiceId(id)) {
              registerById(id);
          }
          // 默认超时时间
-         if (timeout == -1) {
-             timeout = 10 * 60 * 1000;
+         if (ObjectUtils.isEmpty(timeout) || timeout <= 0) {
+             timeout = TIMEOUT;
          }
          return proxy(id, type, timeout);
      }
@@ -235,10 +255,13 @@
          String target = instance.getIp() + Cons.COLON + instance.getPort();
          LOGGER.info("注册服务 service={}", instance);
          RpcRequest rpcRequest = new RpcRequest.Builder().service(null, Cons.REGISTRY_API);
-         Map<String, List<ApiMeteDate>> res = (Map<String, List<ApiMeteDate>>) callAndGetResult(target, rpcRequest, System.currentTimeMillis() + 1000, serviceId);
-         if (ObjectUtils.isEmpty(res)) {
+         Object result = callAndGetResult(target, rpcRequest, System.currentTimeMillis() + 1000, serviceId);
+         boolean fault = ObjectUtils.isEmpty(result) || result instanceof Exception;
+         LOGGER.info("服务列表 result={} success={}", result, fault);
+         if (fault) {
              return;
          }
+         Map<String, List<ApiMeteDate>> res = (Map<String, List<ApiMeteDate>>) result;
          res.get(serviceId).forEach(v -> {
              if (services.containsKey(encoderApiMete(v))) {
                  services.get(encoderApiMete(v)).add(ServiceMete.builder().id(serviceId).ip(instance.getIp()).port(instance.getPort()).build());
@@ -335,7 +358,7 @@
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
                  ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return new ServiceException(101000L, "Service not available");
+                 return new ServiceError(101000L, "Service not available");
              } else {
                  return callAndGetResult(rpcRequest, deadline, args);
              }
@@ -354,20 +377,19 @@
          ServiceMete serviceMete = metes.get(ThreadLocalRandom.current().nextInt(metes.size()));
          channelPool.getChannel(serviceMete.address())
                  .writeAndFlush(RequestSearialUtil.serialize(request));
-         Object result;
          //用while，防止虚假唤醒
-         while ((result = threadResultAndTime.getResult()) == null) {
+         while (!threadResultAndTime.isFinished()) {
              LockSupport.park();
          }
-         filters.chainAfter(request, result);
-         return result;
+         filters.chainAfter(request, threadResultAndTime.getResponse());
+         return threadResultAndTime.getResult();
      }
 
      public static Object callAndGetResult(RpcRequest rpcRequest, long deadline, Object... args) {
          if (state.get() != ServiceState.RUNNING) {
              int count = 0;
              while (state.get() != ServiceState.RUNNING || count++ < 5) {
-                 LOGGER.warn("服务暂不可用 state={}", state.get());
+                 LOGGER.warn("服务暂不可用 state={} retry={}", state.get(), count);
                  try {
                      TimeUnit.SECONDS.sleep(1);
                  } catch (InterruptedException e) {
@@ -394,7 +416,7 @@
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
                  ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return new ServiceException(101000L, "Service not available");
+                 return new ServiceError(101000L, "Service not available");
              } else {
                  return callAndGetResult(rpcRequest, deadline, args);
              }
@@ -426,18 +448,17 @@
              filters.chainBefore(request);
              channelPool.getChannel(hostAndPorts)
                      .writeAndFlush(RequestSearialUtil.serialize(request));
-             Object result;
              //用while，防止虚假唤醒
-             while ((result = threadResultAndTime.getResult()) == null) {
+             while (!threadResultAndTime.isFinished()) {
                  LockSupport.park();
              }
-             filters.chainAfter(request, result);
-             return result;
+             filters.chainAfter(request, threadResultAndTime.getResponse());
+             return threadResultAndTime.getResult();
          } catch (ConnectException e) {
              //当服务缩容时,服务关闭后,nacos没刷新(nacos如果不是高可用,可能会一直进入这里,直到超时)
              if (System.currentTimeMillis() > deadline) {
                  ResultHandler.reqIdThreadMap.remove(Thread.currentThread().getId());
-                 return new ServiceException(101000L, "Service not available");
+                 return new ServiceError(101000L, "Service not available");
              } else {
                  return callAndGetResult(hostAndPorts, rpcRequest, deadline, args);
              }

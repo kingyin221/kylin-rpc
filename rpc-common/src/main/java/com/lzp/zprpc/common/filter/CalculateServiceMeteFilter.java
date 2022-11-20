@@ -11,15 +11,16 @@ import java.util.Map;
  * @modified By：
  * @version: 1.0.0
  */
+@Deprecated
 public class CalculateServiceMeteFilter extends MeteFilter {
     @Override
     public boolean filterIn(Map<String, Object> mete) {
-        mete.put(Cons.INVOKE_START_TIMER, System.currentTimeMillis());
+        mete.put(Cons.INVOKE_START_TIMER, System.nanoTime());
         return true;
     }
 
     @Override
     public void filterOut(Map<String, Object> mete) {
-        mete.put(Cons.INVOKE_STOP_TIMER, System.currentTimeMillis());
+        mete.put(Cons.INVOKE_STOP_TIMER, System.nanoTime());
     }
 }

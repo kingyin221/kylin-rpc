@@ -11,7 +11,7 @@ import org.slf4j.MDC;
  * @modified By：
  * @version: 1.0.0
  */
-public class LinksFilter extends AbstractRpcFilter {
+public class LinksServiceFilter extends AbstractRpcFilter {
     @Override
     public boolean beforeInvoke(RequestDTO request) {
         if (request.getMete().containsKey(Constant.REQUEST_ID))

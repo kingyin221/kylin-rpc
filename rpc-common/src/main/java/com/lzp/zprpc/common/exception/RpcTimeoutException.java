@@ -13,16 +13,20 @@
   *  limitations under the License.
   */
 
-package com.lzp.zprpc.common.exception;
+ package com.lzp.zprpc.common.exception;
 
-/**
- * Description:远程调用超时异常,当指定了超时时间发起远程调用,超过这个时间还没返回结果,就会抛出这个异常
- *
- * @author: Zeping Lu
- * @date: 2020/10/16 20:40
- */
-public class RpcTimeoutException extends RuntimeException {
-    public RpcTimeoutException(String message) {
-        super(message);
-    }
-}
+ import java.io.Serializable;
+
+ /**
+  * Description:远程调用超时异常,当指定了超时时间发起远程调用,超过这个时间还没返回结果,就会抛出这个异常
+  *
+  * @author: Zeping Lu
+  * @date: 2020/10/16 20:40
+  */
+ public class RpcTimeoutException extends RuntimeException implements Serializable {
+     private static final long serialVersionUID = 8442581574466615770L;
+
+     public RpcTimeoutException(String message) {
+         super(message);
+     }
+ }

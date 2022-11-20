@@ -15,16 +15,20 @@
 
 package com.lzp.zprpc.common.exception;
 
+import java.io.Serializable;
+
 /**
  * Description:在发起远程调用时候出现异常(还没有真正进行远程调用),会返回这个异常
- *
- *  目前就一种情况会返回这个异常
- *  没有可用服务时：调用rpc服务时，发现没有任何可用服务
+ * <p>
+ * 目前就一种情况会返回这个异常
+ * 没有可用服务时：调用rpc服务时，发现没有任何可用服务
  *
  * @author: Zeping Lu
  * @date: 2021/2/27 17:55
  */
-public class CallException extends RuntimeException {
+public class CallException extends RuntimeException implements Serializable {
+    private static final long serialVersionUID = 8233795369222311040L;
+
     public CallException(String message) {
         super(message);
     }

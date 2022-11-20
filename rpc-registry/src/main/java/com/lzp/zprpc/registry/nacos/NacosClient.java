@@ -25,8 +25,8 @@
  import com.lzp.zprpc.common.api.constant.ServiceName;
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.exception.CallException;
+ import com.lzp.zprpc.common.util.ClazzUtils;
  import com.lzp.zprpc.registry.api.RegistryClient;
- import com.lzp.zprpc.registry.util.ClazzUtils;
  import org.apache.commons.lang3.ObjectUtils;
  import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;

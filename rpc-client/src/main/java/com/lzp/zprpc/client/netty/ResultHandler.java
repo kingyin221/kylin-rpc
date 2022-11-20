@@ -38,6 +38,10 @@ public class ResultHandler extends SimpleChannelInboundHandler<byte[]> {
          */
         private volatile Object result;
 
+        private volatile Boolean finished = false;
+
+        private volatile ResponseDTO response;
+
         public ThreadResultAndTime(long deadLine, Thread thread) {
             this.deadLine = deadLine;
             this.thread = thread;
@@ -45,6 +49,14 @@ public class ResultHandler extends SimpleChannelInboundHandler<byte[]> {
 
         public Object getResult() {
             return result;
+        }
+
+        public Boolean isFinished() {
+            return finished;
+        }
+
+        public ResponseDTO getResponse() {
+            return response;
         }
     }
 
@@ -65,7 +77,6 @@ public class ResultHandler extends SimpleChannelInboundHandler<byte[]> {
                 new ThreadFactoryImpl("rpc client"), (r, executor) -> r.run());
 
 
-
         //一个线程专门用来检测rpc超时
         rpcClientThreadPool.execute(() -> {
             long now;
@@ -76,13 +87,14 @@ public class ResultHandler extends SimpleChannelInboundHandler<byte[]> {
                     if (entry.getValue().deadLine < now) {
                         ThreadResultAndTime threadResultAndTime = reqIdThreadMap.remove(entry.getKey());
                         threadResultAndTime.result = Cons.EXCEPTION + Cons.TIMEOUT;
+                        threadResultAndTime.finished = true;
                         LockSupport.unpark(threadResultAndTime.thread);
                     }
                 }
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
-                    LOGGER.error(e.getMessage(),e);
+                    LOGGER.error(e.getMessage(), e);
                 }
             }
         });
@@ -95,6 +107,8 @@ public class ResultHandler extends SimpleChannelInboundHandler<byte[]> {
             ThreadResultAndTime threadResultAndTime = reqIdThreadMap.remove(responseDTO.getThreadId());
             if (threadResultAndTime != null) {
                 threadResultAndTime.result = responseDTO.getResult();
+                threadResultAndTime.finished = responseDTO.getFinished();
+                threadResultAndTime.response = responseDTO;
                 LockSupport.unpark(threadResultAndTime.thread);
             }
         });

@@ -15,13 +15,17 @@
 
 package com.lzp.zprpc.common.exception;
 
+import java.io.Serializable;
+
 /**
  * Description:没有空闲端口异常，当不指定端口时发布服务可能会抛出
  *
  * @author: Zeping Lu
  * @date: 2021/1/26 9:43
  */
-public class NoFreePortException extends RuntimeException{
+public class NoFreePortException extends RuntimeException implements Serializable {
+    private static final long serialVersionUID = -8449041009425754601L;
+
     public NoFreePortException(String message) {
         super(message);
     }

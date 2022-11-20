@@ -23,24 +23,25 @@
  import com.lzp.zprpc.common.constant.Cons;
  import com.lzp.zprpc.common.dtos.RequestDTO;
  import com.lzp.zprpc.common.dtos.ResponseDTO;
+ import com.lzp.zprpc.common.exception.BaseException;
  import com.lzp.zprpc.common.exception.CallException;
- import com.lzp.zprpc.common.exception.ServiceException;
- import com.lzp.zprpc.common.filter.CalculateServiceMeteFilter;
- import com.lzp.zprpc.common.filter.LinksFilter;
- import com.lzp.zprpc.common.filter.LoggerFilter;
+ import com.lzp.zprpc.common.exception.ServiceError;
+ import com.lzp.zprpc.common.filter.BaseApiRpcFilter;
+ import com.lzp.zprpc.common.filter.LinksServiceFilter;
  import com.lzp.zprpc.common.filter.RpcFilter;
+ import com.lzp.zprpc.common.filter.scanner.AutoScanner;
+ import com.lzp.zprpc.common.filter.scanner.FilterServiceAutoScanner;
  import com.lzp.zprpc.common.util.RequestSearialUtil;
  import com.lzp.zprpc.common.util.ResponseSearialUtil;
- import com.lzp.zprpc.common.util.SpringUtils;
  import com.lzp.zprpc.common.util.ThreadFactoryImpl;
  import com.lzp.zprpc.registry.api.RegistryClient;
  import com.lzp.zprpc.registry.nacos.NacosClient;
- import com.lzp.zprpc.server.util.LogoUtil;
  import io.netty.channel.ChannelHandlerContext;
  import io.netty.channel.SimpleChannelInboundHandler;
  import org.apache.commons.lang3.ObjectUtils;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
+ import org.springframework.context.ApplicationContext;
  import org.springframework.core.annotation.AnnotationUtils;
  import org.springframework.stereotype.Component;
  import org.springframework.stereotype.Service;
@@ -92,22 +93,36 @@
      }
 
      static {
-         filter(new LinksFilter());
-         filter(new CalculateServiceMeteFilter());
-         filter(new LoggerFilter());
+         filter(new LinksServiceFilter());
+         filter(new BaseApiRpcFilter());
      }
 
-     private static void startUpService(ApiMeteDate mete) {
+     public static void scanFilter(String basePack, ApplicationContext context) throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+         AutoScanner<RpcFilter> filterAutoScanner = new FilterServiceAutoScanner();
+         List<RpcFilter> rpcFilters;
+         if (ObjectUtils.isEmpty(context)) {
+             rpcFilters = filterAutoScanner.scanList(basePack);
+         } else {
+             rpcFilters = filterAutoScanner.scanList(basePack, context);
+         }
+         for (RpcFilter rpcFilter : rpcFilters) {
+             LOGGER.info("注册过滤器{}", rpcFilter.getClass().getName());
+             filter(rpcFilter);
+         }
+     }
+
+     private static void startUpService(ApiMeteDate mete, ApplicationContext context) {
          MethodMete methodMete = MethodMete.builder().methodName(mete.getMethodName())
                  .paramTypes(mete.getParamTypes()).service(mete.getService()).build();
          if (!serviceClassMap.containsKey(methodMete)) {
              serviceClassMap.put(methodMete, mete.getServiceType());
-             if (!services.containsKey(mete.getServiceType())) {
+             Api api = new Api(mete.getUrl(), mete.getType(), mete.getParmaNames());
+             if (!apiService.containsKey(api)) {
                  Object service = null;
                  try {
-                     if (ObjectUtils.isNotEmpty(AnnotationUtils.findAnnotation(mete.getServiceType(), Component.class))) {
-                         service = SpringUtils.getBean(mete.getServiceType());
-                         LOGGER.info("从SpringIOC构建服务 service={}", service);
+                     if (context != null && ObjectUtils.isNotEmpty(AnnotationUtils.findAnnotation(mete.getServiceType(), Component.class))) {
+                         service = context.getBean(mete.getServiceType());
+                         LOGGER.info("从SpringIOC构建服务 api={} service={}", api, service);
                      } else {
                          service = mete.getServiceType().newInstance();
                          LOGGER.info("主动构建服务 service={}", service);
@@ -115,14 +130,14 @@
                  } catch (InstantiationException | IllegalAccessException e) {
                      LOGGER.error("服务获取失败 service={}", mete.getService(), e);
                  }
-                 services.put(mete.getServiceType(), service);
-                 apiService.put(new Api(mete.getUrl(), mete.getType(), mete.getParmaNames()), methodMete);
+                 if (!services.containsKey(mete.getServiceType())) {
+                     services.put(mete.getServiceType(), service);
+                 }
+                 apiService.put(api, methodMete);
+             } else {
+                 throw new RuntimeException("api recur! " + api);
              }
          }
-     }
-
-     public static void main(String[] args) {
-         System.out.println();
      }
 
      private Map<String, List<ApiMeteDate>> apis(String service) {
@@ -151,22 +166,25 @@
      protected void channelRead0(ChannelHandlerContext channelHandlerContext, byte[] bytes) {
          serviceThreadPool.execute(() -> {
              RequestDTO requestDTO = RequestSearialUtil.deserialize(bytes);
+             filters.chainBefore(requestDTO);
              if (Cons.REGISTRY_API.equals(requestDTO.getMethodName())) {
                  LOGGER.info("获取方法表 service={}", requestDTO.getParams()[0]);
-                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(apis((String) requestDTO.getParams()[0]), requestDTO.getThreadId())));
+                 ResponseDTO res = new ResponseDTO(apis((String) requestDTO.getParams()[0]), true, requestDTO.getThreadId());
+                 filters.chainAfter(requestDTO, res);
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(res));
                  return;
              }
              try {
                  Object res = callService(requestDTO);
-                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(res, requestDTO.getThreadId())));
+                 ResponseDTO responseDTO = new ResponseDTO(res, true, requestDTO.getThreadId());
+                 filters.chainAfter(requestDTO, responseDTO);
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(responseDTO));
              } catch (Exception e) {
-                 ServiceException exception;
-                 if (e instanceof ServiceException) {
-                     exception = (ServiceException) e;
-                 } else {
-                     exception = new ServiceException(null, getDetailMsgOfException(e));
-                 }
-                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(new ResponseDTO(exception, requestDTO.getThreadId())));
+                 LOGGER.warn("RPC 异常", e);
+                 ServiceError exception = new ServiceError(100000L, getDetailMsgOfException(e));
+                 ResponseDTO responseDTO = new ResponseDTO(exception, true, requestDTO.getThreadId());
+                 filters.chainAfter(requestDTO, responseDTO);
+                 channelHandlerContext.writeAndFlush(ResponseSearialUtil.serialize(responseDTO));
              }
          });
      }
@@ -197,19 +215,24 @@
              if (ObjectUtils.isEmpty(key)) throw new CallException("not found method=" + methodMete);
              Object service = services.get(key);
              Method method = service.getClass().getDeclaredMethod(methodMete.getMethodName(), methodMete.getParamTypes());
-             filters.chainBefore(requestDTO);
              res = method.invoke(service, requestDTO.getParams());
-             filters.chainAfter(requestDTO, res);
              if (Constant.INVOKE_API.equals(requestDTO.getMete().get(Constant.INVOKE_TYPE))) {
                  res = JSON.toJSON(res);
                  LOGGER.info("Gateway res={}", res);
              }
          } catch (Exception e) {
-             if (e instanceof ServiceException) {
-                 res = e;
+             if (e instanceof InvocationTargetException) {
+                 Throwable targetException = ((InvocationTargetException) e).getTargetException();
+                 if (targetException instanceof BaseException) {
+                     res = new ServiceError(((BaseException) targetException).getCode(), getDetailMsgOfException(e));
+                 } else {
+                     res = new ServiceError(102000L, getDetailMsgOfException(e));
+                 }
+                 LOGGER.warn("service-error", targetException);
              } else {
-                 res = new ServiceException(null, getDetailMsgOfException(e));
+                 res = new ServiceError(102100L, getDetailMsgOfException(e));
              }
+             LOGGER.warn("service-error", e);
          }
          return res;
      }
@@ -231,7 +254,7 @@
      /**
       * @return 注册中心客户端
       */
-     static RegistryClient regiService(String host, String basePack) {
+     static RegistryClient regiService(String host, String basePack, ApplicationContext context) {
          try {
              //默认用nacos做注册中心
              RegistryClient registryClient;
@@ -246,12 +269,12 @@
                  default:
                      registryClient = new NacosClient(host);
              }
-             LogoUtil.printLogo();
+//             LogoUtil.printLogo();
              idServiceMap = registryClient.searchAndRegiInstance(basePack, Server.getIp(), Server.getPort());
              // 非IOC框架需要手动注入
              idServiceMap.values().stream().filter(o -> o instanceof List).flatMap(l -> ((List<?>) l).stream()).forEach(s -> {
                  if (s instanceof ApiMeteDate) {
-                     ServiceHandler.startUpService((ApiMeteDate) s);
+                     ServiceHandler.startUpService((ApiMeteDate) s, context);
                  }
              });
              LOGGER.info("publish service successfully");

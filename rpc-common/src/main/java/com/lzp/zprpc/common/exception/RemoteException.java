@@ -13,16 +13,20 @@
   *  limitations under the License.
   */
 
-package com.lzp.zprpc.common.exception;
+ package com.lzp.zprpc.common.exception;
 
-/**
- * Description:远程调用出现异常,当远程方法抛出异常后,会返回这个异常
- *
- * @author: Zeping Lu
- * @date: 2020/10/16 20:40
- */
-public class RemoteException extends RuntimeException {
-    public RemoteException(String message) {
-        super(message);
-    }
-}
+ import java.io.Serializable;
+
+ /**
+  * Description:远程调用出现异常,当远程方法抛出异常后,会返回这个异常
+  *
+  * @author: Zeping Lu
+  * @date: 2020/10/16 20:40
+  */
+ public class RemoteException extends RuntimeException implements Serializable {
+     private static final long serialVersionUID = -1070127031948629652L;
+
+     public RemoteException(String message) {
+         super(message);
+     }
+ }

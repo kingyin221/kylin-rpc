@@ -3,8 +3,9 @@
     <property name="log.base" value="./log/logback"/>
     <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%date [%thread] [%X{request-id}] %-5level %logger{80} - %msg%n
-            </pattern>
+            <Pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{request-id}] %logger{36} L%line - %msg%n
+            </Pattern>
+            <charset>UTF-8</charset>
         </encoder>
     </appender>
 
@@ -15,8 +16,9 @@
             <FileNamePattern>${log.base}.%d{yyyy -MM-dd}.log.zip</FileNamePattern>
         </rollingPolicy>
         <encoder>
-            <pattern>%date [%thread] [%X{request-id}] %-5level %logger{80} - %msg%n
-            </pattern>
+            <Pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{request-id}] %logger{36} L%line - %msg%n
+            </Pattern>
+            <charset>UTF-8</charset>
         </encoder>
     </appender>
     <logger name="com.sample" level="TRACE"/>

@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
  * @version: 1.0.0
  */
 @Slf4j
+@Deprecated
 public class LoggerFilter extends AbstractRpcFilter {
     @Override
     public boolean beforeInvoke(RequestDTO request) {

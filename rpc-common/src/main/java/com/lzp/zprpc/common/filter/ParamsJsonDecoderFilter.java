@@ -2,7 +2,7 @@ package com.lzp.zprpc.common.filter;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.lzp.zprpc.common.dtos.RequestDTO;
-import com.lzp.zprpc.common.exception.ServiceException;
+import com.lzp.zprpc.common.exception.ServiceError;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -32,6 +32,6 @@ public class ParamsJsonDecoderFilter extends AbstractRpcFilter {
             return JSONObject.parseObject((String) source, target);
         }
         log.info("参数类型解析异常 param={}, target={}", source, target);
-        throw new ServiceException(201000L, "param type error");
+        return new ServiceError(101100L, "param type error");
     }
 }

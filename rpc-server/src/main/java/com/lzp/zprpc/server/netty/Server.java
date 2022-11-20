@@ -25,6 +25,7 @@
  import io.netty.channel.socket.nio.NioServerSocketChannel;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
+ import org.springframework.context.ApplicationContext;
 
  import java.net.Socket;
  import java.util.concurrent.TimeUnit;
@@ -50,7 +51,7 @@
       */
      private static RegistryClient registryClient;
 
-     public synchronized static void startRpcServer(String ip, int port, String host, String basePack) {
+     public synchronized static void startRpcServer(String ip, int port, String host, String basePack, ApplicationContext context) {
          if (Server.port != 0) {
              throw new RuntimeException("The server has started");
          }
@@ -58,15 +59,15 @@
          workerGroup = new NioEventLoopGroup(1);
          startServer0(ip, port, host);
          ServiceHandler.initServiceThreadPool();
-         registryClient = ServiceHandler.regiService(host, basePack);
+         registryClient = ServiceHandler.regiService(host, basePack, context);
      }
 
-     public static void startRpcServer(int port, String host, String basePack) {
-         startRpcServer(null, port, host, basePack);
+     public static void startRpcServer(int port, String host, String basePack, ApplicationContext context) {
+         startRpcServer(null, port, host, basePack, context);
      }
 
-     public static void startRpcServer(String host, String basePack) {
-         startRpcServer(null, 0, host, basePack);
+     public static void startRpcServer(String host, String basePack, ApplicationContext context) {
+         startRpcServer(null, 0, host, basePack, context);
      }
 
      /**

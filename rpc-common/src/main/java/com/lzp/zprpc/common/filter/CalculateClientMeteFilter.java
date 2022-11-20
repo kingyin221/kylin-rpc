@@ -13,6 +13,7 @@ import java.util.Map;
  * @version: 1.0.0
  */
 @Slf4j
+@Deprecated
 public class CalculateClientMeteFilter extends MeteFilter {
     @Override
     public boolean filterIn(Map<String, Object> mete) {

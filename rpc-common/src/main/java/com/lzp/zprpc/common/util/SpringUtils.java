@@ -17,7 +17,6 @@
  import org.springframework.beans.BeansException;
  import org.springframework.context.ApplicationContext;
  import org.springframework.context.ApplicationContextAware;
- import org.springframework.context.annotation.Lazy;
  import org.springframework.stereotype.Component;
 
  import java.util.HashMap;
@@ -30,7 +29,6 @@
   * @date: 2020/9/28 19:23
   */
  @Component
- @Lazy(value = false)
  public class SpringUtils implements ApplicationContextAware {
 
      // todo Spring 自动装配

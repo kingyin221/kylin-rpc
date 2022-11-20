@@ -16,13 +16,17 @@
 
 package com.lzp.zprpc.common.exception;
 
+import java.io.Serializable;
+
 /**
  * Description:没有空闲ip异常，当不指定IP和端口时发布服务可能会抛出
  *
  * @author: Zeping Lu
  * @date: 2021/1/26 9:43
  */
-public class NoFreeIpException extends RuntimeException{
+public class NoFreeIpException extends RuntimeException implements Serializable {
+    private static final long serialVersionUID = 4403383142750572113L;
+
     public NoFreeIpException(String message) {
         super(message);
     }

@@ -15,11 +15,8 @@
 
  package club.kingyin.rpc.registry.nacos;
 
- import club.kingyin.rpc.common.api.annotation.*;
- import com.alibaba.nacos.api.exception.NacosException;
- import com.alibaba.nacos.api.naming.NamingFactory;
- import com.alibaba.nacos.api.naming.NamingService;
  import club.kingyin.rpc.common.api.ApiMeteDate;
+ import club.kingyin.rpc.common.api.annotation.*;
  import club.kingyin.rpc.common.api.constant.Constant;
  import club.kingyin.rpc.common.api.constant.Reference;
  import club.kingyin.rpc.common.api.constant.ServiceName;
@@ -27,6 +24,9 @@
  import club.kingyin.rpc.common.exception.CallException;
  import club.kingyin.rpc.common.util.ClazzUtils;
  import club.kingyin.rpc.registry.api.RegistryClient;
+ import com.alibaba.nacos.api.exception.NacosException;
+ import com.alibaba.nacos.api.naming.NamingFactory;
+ import com.alibaba.nacos.api.naming.NamingService;
  import org.apache.commons.lang3.ObjectUtils;
  import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;
@@ -35,6 +35,7 @@
  import java.lang.reflect.Method;
  import java.lang.reflect.Parameter;
  import java.util.*;
+ import java.util.concurrent.ConcurrentHashMap;
  import java.util.stream.Collectors;
 
  /**
@@ -89,7 +90,7 @@
 
      @Override
      public Map<String, Object> searchAndRegiInstance(String basePack, String ip, int port) throws NacosException, InstantiationException, IllegalAccessException, ClassNotFoundException {
-         Map<String, Object> idServiceMap = new HashMap<>(16);
+         Map<String, Object> idServiceMap = new ConcurrentHashMap<>();
          for (String path : ClazzUtils.getClazzName(basePack)) {
              regiInstanceIfNecessary(ip, port, idServiceMap, Class.forName(path));
          }

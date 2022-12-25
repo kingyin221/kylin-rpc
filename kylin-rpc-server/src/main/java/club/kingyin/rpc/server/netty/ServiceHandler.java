@@ -15,7 +15,6 @@
 
  package club.kingyin.rpc.server.netty;
 
- import com.alibaba.fastjson2.JSON;
  import club.kingyin.rpc.common.api.Api;
  import club.kingyin.rpc.common.api.ApiMeteDate;
  import club.kingyin.rpc.common.api.RpcRequest;
@@ -36,6 +35,7 @@
  import club.kingyin.rpc.common.util.ThreadFactoryImpl;
  import club.kingyin.rpc.registry.api.RegistryClient;
  import club.kingyin.rpc.registry.nacos.NacosClient;
+ import com.alibaba.fastjson2.JSON;
  import io.netty.channel.ChannelHandlerContext;
  import io.netty.channel.SimpleChannelInboundHandler;
  import org.apache.commons.lang3.ObjectUtils;
@@ -52,6 +52,7 @@
  import java.util.Map;
  import java.util.Set;
  import java.util.concurrent.*;
+ import java.util.concurrent.atomic.AtomicBoolean;
  import java.util.stream.Collectors;
 
 
@@ -65,7 +66,12 @@
  public class ServiceHandler extends SimpleChannelInboundHandler<byte[]> {
      private static final Logger LOGGER = LoggerFactory.getLogger(ServiceHandler.class);
 
-     private static Map<String, Object> idServiceMap;
+     /**
+      * 保证原子性和可见性
+      **/
+     private static volatile Map<String, Object> idServiceMap;
+
+     private static volatile AtomicBoolean state = new AtomicBoolean(false);
 
      private static ExecutorService serviceThreadPool;
 
@@ -159,8 +165,15 @@
          }
      }
 
-     private Map<String, List<ApiMeteDate>> apis(String service) {
+     private Map<String, List<ApiMeteDate>> apis(String service) throws BaseException, InterruptedException {
          HashMap<String, List<ApiMeteDate>> res = new HashMap<>();
+         int wait = 0;
+         while (!state.get() && wait++ < 50) {
+             TimeUnit.MILLISECONDS.sleep(10);
+         }
+         if (!state.get()) {
+             throw new BaseException(50010L, "服务加载未完成");
+         }
          idServiceMap.forEach((k, v) -> {
              if (k == null || k.equals(service) && v instanceof List) {
                  List<ApiMeteDate> as = ((List<?>) v).stream().filter(m -> m instanceof ApiMeteDate).map(m -> (ApiMeteDate) ((ApiMeteDate) m).clo()).collect(Collectors.toList());
@@ -287,7 +300,6 @@
                  default:
                      registryClient = new NacosClient(host);
              }
-//             LogoUtil.printLogo();
              idServiceMap = registryClient.searchAndRegiInstance(basePack, Server.getIp(), Server.getPort());
              // 非IOC框架需要手动注入
              idServiceMap.values().stream().filter(o -> o instanceof List).flatMap(l -> ((List<?>) l).stream()).forEach(s -> {
@@ -295,6 +307,7 @@
                      ServiceHandler.startUpService((ApiMeteDate) s, context);
                  }
              });
+             state.set(true);
              LOGGER.info("publish service successfully");
              return registryClient;
          } catch (Exception e) {

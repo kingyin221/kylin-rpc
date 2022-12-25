@@ -19,13 +19,6 @@
  import club.kingyin.rpc.client.connectionpool.FixedShareableChannelPool;
  import club.kingyin.rpc.client.connectionpool.ServiceChannelPoolImp;
  import club.kingyin.rpc.client.connectionpool.SingleChannelPool;
- import com.alibaba.nacos.api.exception.NacosException;
- import com.alibaba.nacos.api.naming.NamingFactory;
- import com.alibaba.nacos.api.naming.NamingService;
- import com.alibaba.nacos.api.naming.listener.NamingEvent;
- import com.alibaba.nacos.api.naming.pojo.Instance;
- import com.alibaba.nacos.api.naming.pojo.ListView;
- import com.google.common.collect.Lists;
  import club.kingyin.rpc.client.netty.ResultHandler;
  import club.kingyin.rpc.common.api.Api;
  import club.kingyin.rpc.common.api.ApiMeteDate;
@@ -46,6 +39,13 @@
  import club.kingyin.rpc.common.util.RequestSearialUtil;
  import club.kingyin.rpc.common.util.ThreadFactoryImpl;
  import club.kingyin.rpc.common.util.ThrowUtils;
+ import com.alibaba.nacos.api.exception.NacosException;
+ import com.alibaba.nacos.api.naming.NamingFactory;
+ import com.alibaba.nacos.api.naming.NamingService;
+ import com.alibaba.nacos.api.naming.listener.NamingEvent;
+ import com.alibaba.nacos.api.naming.pojo.Instance;
+ import com.alibaba.nacos.api.naming.pojo.ListView;
+ import com.alibaba.nacos.shaded.com.google.common.collect.Lists;
  import org.apache.commons.lang3.ObjectUtils;
  import org.apache.commons.lang3.StringUtils;
  import org.slf4j.Logger;
@@ -261,21 +261,25 @@
          LOGGER.info("注册服务 service={}", instance);
          RpcRequest rpcRequest = new RpcRequest.Builder().service(null, Cons.REGISTRY_API);
          Object result = callAndGetResult(target, rpcRequest, System.currentTimeMillis() + 1000, serviceId);
-         boolean fault = ObjectUtils.isEmpty(result) || result instanceof Exception;
+         boolean fault = ObjectUtils.isEmpty(result) || result instanceof Exception || result instanceof ServiceError;
          LOGGER.info("服务列表 result={} success={}", result, fault);
          if (fault) {
+             LOGGER.warn("服务注册异常 {}", serviceId);
              return;
          }
          Map<String, List<ApiMeteDate>> res = (Map<String, List<ApiMeteDate>>) result;
          res.get(serviceId).forEach(v -> {
              if (services.containsKey(encoderApiMete(v))) {
                  services.get(encoderApiMete(v)).add(ServiceMete.builder().id(serviceId).ip(instance.getIp()).port(instance.getPort()).build());
+                 LOGGER.info("方法副本注册 {}", v);
              } else {
                  services.put(encoderApiMete(v), Lists.newArrayList(ServiceMete.builder().id(serviceId).ip(instance.getIp()).port(instance.getPort()).build()));
+                 LOGGER.info("方法注册 {}", v);
              }
          });
-         LOGGER.info("注册表 reg={}", services);
-         LOGGER.info("api res={}", serviceApiMap);
+         LOGGER.info("服务注册成功 {}", serviceId);
+//         LOGGER.info("注册表 reg={}", services);
+//         LOGGER.info("api res={}", serviceApiMap);
 
      }
 
@@ -325,9 +329,8 @@
          if (state.get() != ServiceState.RUNNING) {
              synchronized (ServiceFactory.class) {
                  if (state.get() != ServiceState.RUNNING) {
-                     LOGGER.info("启动");
                      registerThreadPool.execute(() -> {
-
+                         LOGGER.info("接口注册服务启动");
                          int stopCount = 0;
                          while (true) {
                              try {

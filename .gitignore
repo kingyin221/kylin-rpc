@@ -20,3 +20,12 @@
 /rpc-demo/rpc-demo-nacos/rpc-demo-nacos-api/rpc-demo-nacos-api.iml
 /rpc-demo/rpc-demo-nacos/rpc-demo-nacos-consumer/rpc-demo-nacos-consumer.iml
 /rpc-demo/rpc-demo-nacos/rpc-demo-nacos-producer/rpc-demo-nacos-producer.iml
+/kylin-rpc-artifacts/kylin-rpc-artifacts.iml
+/kylin-rpc-artifacts/rpc-artifacts.iml
+/kylin-rpc-client/kylin-rpc-client.iml
+/kylin-rpc-client/rpc-client.iml
+/kylin-rpc-common/rpc-common.iml
+/kylin-rpc-registry/kylin-rpc-registry.iml
+/kylin-rpc-registry/rpc-registry.iml
+/kylin-rpc-server/rpc-server.iml
+/kylin-prc.iml
